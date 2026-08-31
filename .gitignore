@@ -1,0 +1,14 @@
+# Build outputs
+/build
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Rojo
+/sourcemap.json
+
+# Editor
+.vscode/
+.idea/
+*.log

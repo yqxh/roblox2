@@ -1,0 +1,77 @@
+{
+	"name": "the-11-59",
+	"tree": {
+		"$className": "DataModel",
+
+		"ReplicatedStorage": {
+			"Shared": {
+				"$path": "src/shared"
+			},
+			"Assets": {
+				"$path": "src/assets"
+			}
+		},
+
+		"ServerScriptService": {
+			"Server": {
+				"$path": "src/server"
+			}
+		},
+
+		"StarterPlayer": {
+			"$properties": {
+				"CameraMaxZoomDistance": 18,
+				"CameraMinZoomDistance": 0.5,
+				"EnableMouseLockOption": true,
+				"CharacterWalkSpeed": 16,
+				"CharacterJumpHeight": 5,
+				"CharacterUseJumpPower": false
+			},
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"Client": {
+					"$path": "src/client"
+				}
+			}
+		},
+
+		"Lighting": {
+			"$properties": {
+				"Technology": "Future",
+				"ClockTime": 0.05,
+				"Brightness": 1.9,
+				"GlobalShadows": true,
+				"ShadowSoftness": 0.12,
+				"EnvironmentDiffuseScale": 1,
+				"EnvironmentSpecularScale": 1,
+				"ExposureCompensation": 0.15,
+				"Ambient": [0.055, 0.063, 0.1],
+				"OutdoorAmbient": [0.11, 0.125, 0.19],
+				"ColorShift_Top": [0.55, 0.62, 0.85],
+				"ColorShift_Bottom": [0.06, 0.07, 0.12],
+				"FogColor": [0.05, 0.07, 0.13],
+				"FogStart": 60,
+				"FogEnd": 1100
+			}
+		},
+
+		"Players": {
+			"$properties": {
+				"CharacterAutoLoads": false,
+				"RespawnTime": 2
+			}
+		},
+
+		"Workspace": {
+			"$properties": {
+				"StreamingEnabled": false
+			}
+		},
+
+		"SoundService": {
+			"$properties": {
+				"RespectFilteringEnabled": true
+			}
+		}
+	}
+}
