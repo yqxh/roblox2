@@ -179,7 +179,7 @@ local function footstepLoop(dt)
 			vol *= 0.5
 		end
 		local stepSound = Instance.new("Sound")
-		stepSound.SoundId = SoundBank.SRC.Steps
+		stepSound.SoundId = SoundBank.FILES.Steps
 		stepSound.PlaybackSpeed = pitch * 3.2
 		stepSound.Volume = vol
 		stepSound.TimePosition = 0.05
