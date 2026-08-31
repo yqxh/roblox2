@@ -43,6 +43,13 @@ local mode = "exterior" -- exterior | interior | tunnel | dawn | defeat
 local function buildEffects()
 	Lighting:ClearAllChildren()
 
+	-- our moon hangs low over the valley; hide the sky's own, keep its stars
+	local sky = Instance.new("Sky")
+	sky.MoonAngularSize = 0
+	sky.SunAngularSize = 13 -- the dawn payoff gets a real sun disc
+	sky.StarCount = 4500
+	sky.Parent = Lighting
+
 	atmosphere = Instance.new("Atmosphere")
 	atmosphere.Density = BASE.density
 	atmosphere.Offset = BASE.offset
