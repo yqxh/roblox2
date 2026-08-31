@@ -279,12 +279,20 @@ function DoorSystem.buildBoundary(i, entryThis, entryNext)
 		end)
 	end
 
-	-- The main sliding door (skip when both sides are open-air)
+	-- The main sliding door (skip when both sides are open-air).
+	-- Against an open car it sits flush on the enclosed car's end wall
+	-- instead of floating mid-gap.
 	if not (isOpenArchetype(entryThis) and isOpenArchetype(entryNext)) then
+		local doorX = xc
+		if isOpenArchetype(entryNext) then
+			doorX = xc - 1.45
+		elseif isOpenArchetype(entryThis) then
+			doorX = xc + 1.45
+		end
 		local door = Forge.part({
 			parent = model, name = "SlideDoor",
 			size = Vector3.new(0.5, 7, 3.8),
-			cf = CFrame.new(xc, FLOOR + 3.5, 0),
+			cf = CFrame.new(doorX, FLOOR + 3.5, 0),
 			color = Palette.WallPanel, material = M.Wood,
 		})
 		door.CollisionGroup = "Door"
@@ -335,9 +343,24 @@ function DoorSystem.onDoorTriggered(b, player)
 			SoundBank.play("LatchOpen", b.door)
 			Net.fireClient(player, Net.T.Toast, { text = "The brass key turns once, then crumbles.", tone = "good" })
 			slideDoor(b, true)
+		elseif char:FindFirstChild("Prybar") then
+			-- no key? the lock loses the argument, loudly (anti-softlock)
+			b.bashes += 1
+			SoundBank.play("PryCreak", b.door, { pitchScale = 0.7 })
+			ctx.signals.noiseEvent:fire(player, Config.Noise.Bash, b.door.Position)
+			if b.bashes >= 3 then
+				b.state = "free"
+				b.prompt.ActionText = "Slide open"
+				b.prompt.ObjectText = "Door"
+				b.prompt.HoldDuration = Config.Interact.Door
+				slideDoor(b, true, 0.3)
+				Net.fireClient(player, Net.T.Toast, { text = "The lock tears out of the wood. Everything heard that.", tone = "warn" })
+			else
+				Net.fireClient(player, Net.T.Toast, { text = ("The lock groans. (%d/3)"):format(b.bashes), tone = "warn" })
+			end
 		else
 			SoundBank.play("UiDeny", b.door)
-			Net.fireClient(player, Net.T.Toast, { text = "Locked. It wants a brass key.", tone = "warn" })
+			Net.fireClient(player, Net.T.Toast, { text = "Locked. A brass key would be polite. A pry bar would be effective.", tone = "warn" })
 		end
 		return
 	end

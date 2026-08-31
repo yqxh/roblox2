@@ -147,7 +147,7 @@ local function showPing(data)
 	label.Font = Palette.FontHeader
 	label.TextSize = 14
 	label.TextColor3 = data.ghost and Palette.GhostBlue or Palette.UIWarn
-	label.Text = "◇ " .. (data.name or "?")
+	label.Text = "* " .. (data.name or "?")
 	label.Parent = gui
 	SoundBank.play("PingMark", data.pos, { volumeScale = 0.5 })
 	task.delay(4, function()

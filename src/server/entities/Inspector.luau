@@ -108,7 +108,7 @@ local function fine(player, why)
 	SoundBank.play("InspectorFine", ctx.TrainBuilder.carPosition(player:GetAttribute("CarIndex") or 1))
 	local msg = why or "No ticket. The fine is taken out of you."
 	if taken > 0 then
-		msg = msg .. (" (−%d fare)"):format(taken)
+		msg = msg .. (" (-%d fare)"):format(taken)
 	end
 	Net.fireClient(player, Net.T.Subtitle, { text = msg, seconds = 5 })
 end

@@ -34,7 +34,7 @@ ItemDefs.Items = {
 	},
 	Flare = {
 		display = "Flare",
-		glyph = "F",
+		glyph = "!",
 		color = Color3.fromRGB(255, 84, 62),
 		desc = "Strike, then throw. Loud, bright, and very interesting to the wrong crowd.",
 		kind = "tool",
@@ -63,7 +63,7 @@ ItemDefs.Items = {
 	},
 	Ticket = {
 		display = "Ticket",
-		glyph = "№",
+		glyph = "N",
 		color = Palette.UIPaper,
 		desc = "Second class, one way. Be SEATED when the Inspector calls and it will be honored.",
 		kind = "passive",

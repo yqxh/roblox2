@@ -95,7 +95,7 @@ local function handleBuy(player, data)
 	ctx.ItemService.grant(player, data.item)
 	SoundBank.play("Purchase", machine.part)
 	Net.fireClient(player, Net.T.ShopResult, { ok = true, item = data.item })
-	Net.fireClient(player, Net.T.Toast, { text = ("Bought: %s (−%d fare)"):format(def.display, price), tone = "loot" })
+	Net.fireClient(player, Net.T.Toast, { text = ("Bought: %s (-%d fare)"):format(def.display, price), tone = "loot" })
 end
 
 -- Direct entry for vending prompts (same validation as the remote path).

@@ -827,17 +827,23 @@ function Builders.freight(meta, rng)
 		end
 	end
 	local lootLeft = 3
+	local lootablePlaced = 0
 	for _, s in ipairs(spots) do
 		if rng:NextNumber() < 0.5 then
 			local lootable = lootLeft > 0 and rng:NextNumber() < 0.45
 			if lootable then
 				lootLeft -= 1
+				lootablePlaced += 1
 			end
 			local box = crate(meta, CFrame.new(s[1], FLOOR + 1.2, s[2]), rng, lootable)
 			if rng:NextNumber() < 0.3 then
 				crate(meta, box.CFrame * CFrame.new(0, box.Size.Y, 0), rng, false)
 			end
 		end
+	end
+	if lootablePlaced == 0 then
+		-- guarantee at least one openable crate: key/ticket seeding relies on it
+		crate(meta, CFrame.new(x0 + 20, FLOOR + 1.2, 2.6), rng, true)
 	end
 	-- tarp piles to hide beneath
 	for k = 1, 2 do
@@ -1019,7 +1025,7 @@ function Builders.redcar(meta, rng)
 			cf = CFrame.new(x0 + 8 + k * 8, 15.2, 5.25),
 			color = Palette.Brass, material = M.Wood, cancollide = false,
 		})
-		Forge.surfaceText(frame, Enum.NormalId.Back, "◍", {
+		Forge.surfaceText(frame, Enum.NormalId.Back, "O", {
 			color = Color3.fromRGB(200, 196, 188), font = Enum.Font.Fondamento, pps = 30,
 		})
 	end

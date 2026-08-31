@@ -284,6 +284,7 @@ function ItemService.consumeItem(player, name)
 end
 
 function ItemService.clearInventory(player)
+	watchHolders[player] = nil
 	for _, name in ipairs(ItemDefs.Order) do
 		if ItemDefs.get(name).kind == "passive" then
 			player:SetAttribute(passiveAttr(name), 0)

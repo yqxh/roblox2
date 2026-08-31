@@ -709,10 +709,10 @@ end
 
 local function buildSettings()
 	UIKit.button({
-		parent = hud, text = "⚙",
-		size = UDim2.fromOffset(34, 34),
+		parent = hud, text = "MENU",
+		size = UDim2.fromOffset(58, 30),
 		pos = UDim2.new(0, 14, 0, 14),
-		textSize = 18,
+		textSize = 12,
 		onClick = function()
 			settingsPanel.Visible = not settingsPanel.Visible
 		end,
@@ -771,10 +771,10 @@ local function wireAttributes()
 		local keys = player:GetAttribute("Item_BrassKey") or 0
 		local bits = {}
 		if tickets > 0 then
-			table.insert(bits, ("№ ticket ×%d"):format(tickets))
+			table.insert(bits, ("tickets x%d"):format(tickets))
 		end
 		if keys > 0 then
-			table.insert(bits, ("brass key ×%d"):format(keys))
+			table.insert(bits, ("keys x%d"):format(keys))
 		end
 		passiveRow.Text = #bits > 0 and table.concat(bits, "   ") or "no papers"
 	end
