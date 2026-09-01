@@ -249,6 +249,9 @@ local function decorateGuarantees(carIndex, nodes)
 end
 
 function LootSystem.populateCar(carIndex, meta)
+	-- registry key may be synthetic (stations use 1000+n); loot math uses
+	-- the real car so depth multipliers and mimic odds stay sane
+	local effectiveCar = math.min(meta.effectiveCar or carIndex, Config.Train.Cars)
 	local nodes = {}
 	for _, data in ipairs(meta.lootNodes or {}) do
 		local tbl = TABLES[data.kind]
@@ -259,7 +262,7 @@ function LootSystem.populateCar(carIndex, meta)
 			kind = data.kind,
 			part = data.part,
 			opts = data.opts or {},
-			carIndex = carIndex,
+			carIndex = effectiveCar,
 			opened = false,
 		}
 		node.prompt = Forge.prompt(data.part, {
@@ -275,7 +278,7 @@ function LootSystem.populateCar(carIndex, meta)
 		table.insert(nodes, node)
 	end
 	nodesByCar[carIndex] = nodes
-	decorateGuarantees(carIndex, nodes)
+	decorateGuarantees(effectiveCar, nodes)
 
 	-- the lounge piano and other regrettable attractions
 	for _, prop in ipairs(meta.model:GetChildren()) do

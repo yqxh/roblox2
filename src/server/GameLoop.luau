@@ -94,7 +94,9 @@ end
 local function scoopPlatformPlayers()
 	for _, player in ipairs(Players:GetPlayers()) do
 		local char, _, root = ctx.util.aliveCharacter(player)
-		if char and (player:GetAttribute("CarIndex") or 0) < 1 then
+		-- judge by attribute AND by body: nobody gets left where the ground is about to stop existing
+		if char and ((player:GetAttribute("CarIndex") or 0) < 1
+			or math.abs(root.Position.Z) > Config.Train.CarWidth / 2) then
 			local cf = ctx.TrainBuilder.interiorSpawn(1)
 			root.CFrame = cf + Vector3.new(ctx.rng:NextNumber(-1, 1), 0, ctx.rng:NextNumber(-1, 1))
 		end

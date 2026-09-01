@@ -172,9 +172,9 @@ local function buildPlatform(stationNumber, name)
 		Forge.light(head, { color = Palette.LampGlow, range = 16, brightness = 0.9, flicker = true, shadows = true })
 	end
 
-	-- vending row
+	-- vending row: unrotated, so the Front (-Z) faces sell toward the train
 	for k, entry in ipairs(VEND_STOCK) do
-		buildMachine(model, CFrame.new(cx - 36 + k * 9, FLOOR + 2.7, zNear + 12.6) * CFrame.Angles(0, math.rad(180), 0), entry, stationNumber, k)
+		buildMachine(model, CFrame.new(cx - 36 + k * 9, FLOOR + 2.7, zNear + 12.6), entry, stationNumber, k)
 	end
 
 	-- freight scatter with a little loot
@@ -215,7 +215,11 @@ function StationService.arrive(stationNumber)
 	current = { model = model, number = stationNumber, name = name }
 
 	-- platform loot uses the normal container path (station keys live past 1000)
-	ctx.LootSystem.populateCar(1000 + stationNumber, { lootNodes = lootNodes, model = model })
+	ctx.LootSystem.populateCar(1000 + stationNumber, {
+		lootNodes = lootNodes,
+		model = model,
+		effectiveCar = stationCar,
+	})
 
 	SoundBank.play("StationBell", ctx.TrainBuilder.carPosition(stationCar))
 	Net.fireAll(Net.T.Announce, {

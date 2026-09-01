@@ -46,7 +46,8 @@ function TrainBuilder.interiorSpawn(i)
 end
 
 function TrainBuilder.carIndexAt(pos)
-	if math.abs(pos.Z) > T.CarWidth then
+	-- half-width plus a whisker: platform-standers are NOT aboard
+	if math.abs(pos.Z) > T.CarWidth / 2 + 1 then
 		return nil
 	end
 	local i = math.floor(pos.X / T.CarPitch) + 1

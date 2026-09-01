@@ -374,7 +374,8 @@ local function shell(meta, opts)
 			cf = CFrame.new(cx, 17.8, side * (HALFW + 0.02)),
 			color = paint, material = M.Wood, cancollide = false, canquery = false,
 		})
-		Forge.surfaceText(band, side == 1 and Enum.NormalId.Front or Enum.NormalId.Back, "THE  11:59", {
+		-- NormalId.Front is the -Z face; the outward face on the +Z side is Back
+		Forge.surfaceText(band, side == 1 and Enum.NormalId.Back or Enum.NormalId.Front, "THE  11:59", {
 			color = Palette.CarLetters, font = Palette.FontHeader, pps = 44,
 		})
 		local plaque = Forge.part({
@@ -383,7 +384,7 @@ local function shell(meta, opts)
 			cf = CFrame.new(x0 + 3.4, 12.6, side * (HALFW + 0.02)),
 			color = Color3.fromRGB(20, 22, 20), material = M.Metal, cancollide = false, canquery = false,
 		})
-		Forge.surfaceText(plaque, side == 1 and Enum.NormalId.Front or Enum.NormalId.Back, string.format("CAR %02d", meta.index), {
+		Forge.surfaceText(plaque, side == 1 and Enum.NormalId.Back or Enum.NormalId.Front, string.format("CAR %02d", meta.index), {
 			color = Palette.CarLetters, font = Palette.FontHeader, pps = 60,
 		})
 	end
@@ -579,7 +580,8 @@ function Builders.caboose(meta, rng)
 			cf = CFrame.new(x0 + 8 + k * 8, 15, 5.28),
 			color = Palette.UIPaperDim, material = M.Plaster, cancollide = false,
 		})
-		Forge.surfaceText(sign, Enum.NormalId.Back, text, {
+		-- the poster hangs on the +Z wall; its readable face is -Z (Front)
+		Forge.surfaceText(sign, Enum.NormalId.Front, text, {
 			color = Palette.UIInk, font = Palette.FontHeader, pps = 34,
 		})
 	end
@@ -719,7 +721,7 @@ function Builders.diner(meta, rng)
 		cf = CFrame.new(barX - 2.5, 15.4, 4.9),
 		color = Color3.fromRGB(20, 22, 24), material = M.Wood, cancollide = false,
 	})
-	Forge.surfaceText(menu, Enum.NormalId.Back, "DINING CAR\nsoup — gone\nbread — gone\ncoffee — cold\nstay seated", {
+	Forge.surfaceText(menu, Enum.NormalId.Front, "DINING CAR\nsoup — gone\nbread — gone\ncoffee — cold\nstay seated", {
 		color = Palette.UIPaper, font = Palette.FontHeader, pps = 40,
 	})
 	if rng:NextNumber() > 0.5 then
@@ -1025,7 +1027,7 @@ function Builders.redcar(meta, rng)
 			cf = CFrame.new(x0 + 8 + k * 8, 15.2, 5.25),
 			color = Palette.Brass, material = M.Wood, cancollide = false,
 		})
-		Forge.surfaceText(frame, Enum.NormalId.Back, "O", {
+		Forge.surfaceText(frame, Enum.NormalId.Front, "O", {
 			color = Color3.fromRGB(200, 196, 188), font = Enum.Font.Fondamento, pps = 30,
 		})
 	end

@@ -444,7 +444,10 @@ local function onPlayerAdded(player)
 
 	local runState = ctx.GameLoop.state()
 	if runState == "Lobby" or runState == "Boot" then
-		PlayerService.spawnAt(player, ctx.TrainBuilder.lobbySpawnCF())
+		-- startRun's spawnAllAtLobby may have beaten us here; don't double-spawn
+		if not player.Character then
+			PlayerService.spawnAt(player, ctx.TrainBuilder.lobbySpawnCF())
+		end
 	else
 		-- late joiners haunt the train until the next stop
 		local rear = ctx.TrainBuilder.rearMostBuilt()
