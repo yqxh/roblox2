@@ -141,4 +141,4 @@ std just avoids the network fetch of the Roblox API dump.)
 
 ## License
 
-Do whatever you like with it. A credit ("THE 11:59") is appreciated.
+copyright @me
