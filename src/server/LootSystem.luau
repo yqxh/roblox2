@@ -60,6 +60,10 @@ local TABLES = {
 		fare = { 10, 20 }, itemChance = 0.7, hold = 1.2, loud = true,
 		items = { { 25, "Tonic" }, { 25, "Ticket" }, { 25, "Bandage" }, { 25, "Flare" } },
 	},
+	roofcase = { -- strapped up top: nobody honest packed it there
+		fare = { 8, 16 }, itemChance = 0.7, hold = 0.8,
+		items = { { 22, "Flare" }, { 18, "Battery" }, { 15, "Oil" }, { 15, "Bandage" }, { 12, "Tonic" }, { 10, "Ticket" }, { 8, "Prybar" } },
+	},
 }
 
 function LootSystem.init(c)

@@ -1228,6 +1228,27 @@ function CarPlans.buildCar(entry, parent)
 	local builder = Builders[entry.archetype] or Builders.coach
 	builder(meta, rng)
 
+	-- lashed roof cargo on some enclosed cars: the roof route pays rent
+	if meta.enclosed and entry.archetype ~= "caboose" and rng:NextNumber() < 0.35 then
+		local rx = meta.x0 + rng:NextNumber(9, L - 9)
+		local rz = rng:NextNumber(-2.2, 2.2)
+		local case = Forge.part({
+			parent = model, name = "RoofCase",
+			size = Vector3.new(rng:NextNumber(1.8, 2.4), 1.1, 1.2),
+			cf = CFrame.new(rx, CEIL + 1.85, rz) * CFrame.Angles(0, rng:NextNumber(-0.3, 0.3), 0),
+			color = Color3.fromRGB(72, 54, 40), material = M.Leather,
+		})
+		for _, off in ipairs({ -0.6, 0.6 }) do
+			Forge.part({
+				parent = model, name = "Lashing",
+				size = Vector3.new(0.16, 1.25, 1.35),
+				cf = case.CFrame * CFrame.new(off, 0, 0),
+				color = Color3.fromRGB(40, 36, 30), material = M.Fabric, cancollide = false,
+			})
+		end
+		addLoot(meta, "roofcase", case)
+	end
+
 	model:SetAttribute("Enclosed", meta.enclosed)
 	return meta
 end

@@ -248,6 +248,12 @@ function PlayerService.heal(player, amount)
 	end
 end
 
+local secondChanceUsed = {}
+
+function PlayerService.resetRunFlags()
+	table.clear(secondChanceUsed)
+end
+
 function PlayerService.onDied(player, reason)
 	if player:GetAttribute("Ghost") then
 		return
@@ -267,6 +273,34 @@ function PlayerService.onDied(player, reason)
 		ctx.ItemService.dropAllItems(player, deathPos)
 	end
 	SoundBank.play("Death", deathPos or ctx.TrainBuilder.carPosition(1))
+
+	-- a lone rider's first death: the line spits them back out once
+	if P.SoloSecondChance and not secondChanceUsed[player] then
+		local otherRiders = 0
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player and not other:GetAttribute("Ghost") then
+				otherRiders += 1
+			end
+		end
+		local runState = ctx.GameLoop.state()
+		if otherRiders == 0 and (runState == "Journey" or runState == "Station" or runState == "Finale") then
+			secondChanceUsed[player] = true
+			player:SetAttribute("Fare", math.floor((player:GetAttribute("Fare") or 0) / 2))
+			local rear = ctx.TrainBuilder.rearMostBuilt()
+			local character = PlayerService.spawnAt(player, ctx.TrainBuilder.interiorSpawn(rear), false)
+			local hum = Util.humanoidOf(character)
+			if hum then
+				hum.Health = 45
+			end
+			Net.fireClient(player, Net.T.Announce, {
+				title = "NOT YET",
+				sub = "The line is not done with you. It took half your fare as interest. There will be no third courtesy.",
+				seconds = 7, tone = "warn",
+			})
+			SoundBank.play("GhostRise", ctx.TrainBuilder.carPosition(rear), { pitchScale = 0.7 })
+			return
+		end
+	end
 	ctx.signals.playerGhosted:fire(player, reason or "died")
 	ctx.StatsService.noteDeath(player)
 
@@ -496,6 +530,12 @@ function PlayerService.start()
 
 	ctx.signals.noiseEvent:connect(function(player, amount)
 		PlayerService.addNoise(player, amount)
+	end)
+
+	ctx.signals.runStateChanged:connect(function(state2)
+		if state2 == "Lobby" then
+			PlayerService.resetRunFlags()
+		end
 	end)
 
 	task.spawn(function()

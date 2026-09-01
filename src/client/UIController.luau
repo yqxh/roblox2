@@ -37,6 +37,8 @@ local damageVignette, lowHpVignette, ghostVignette
 local downedCard, endCard
 local hotbarSlots = {}
 local settingsPanel
+local scareFrame, scareEyes
+local channelBar, channelThread
 
 ----------------------------------------------------------------
 -- HUD construction
@@ -255,6 +257,92 @@ local function buildOverlays()
 		pos = UDim2.new(0.15, 0, 0.45, 0),
 		font = Palette.FontHeader, textSize = 16, color = Palette.UIPaperDim, wrap = true, z = 10,
 	}).Name = "Detail"
+
+	-- the split second where the night has a face
+	scareFrame = UIKit.frame({
+		parent = overlayScreen, visible = false,
+		color = Color3.new(0, 0, 0), transparency = 0.05, z = 20,
+	})
+	scareEyes = {}
+	for _, off in ipairs({ -0.09, 0.09 }) do
+		local eye = UIKit.frame({
+			parent = scareFrame,
+			size = UDim2.fromOffset(46, 26),
+			pos = UDim2.new(0.5 + off, 0, 0.44, 0),
+			anchor = Vector2.new(0.5, 0.5),
+			color = Color3.fromRGB(222, 214, 196),
+			corner = 999, z = 21,
+		})
+		table.insert(scareEyes, eye)
+	end
+
+	-- bandage channel readout
+	channelBar = UIKit.frame({
+		parent = overlayScreen, visible = false,
+		size = UDim2.fromOffset(200, 30),
+		pos = UDim2.new(0.5, 0, 0.62, 0), anchor = Vector2.new(0.5, 0.5),
+		color = Palette.UIPanel, transparency = 0.25, corner = 8, stroke = 1, z = 6,
+	})
+	UIKit.label({
+		parent = channelBar, text = "wrapping…",
+		font = Palette.FontHeader, textSize = 12, color = Palette.UIPaperDim,
+		size = UDim2.new(1, 0, 0, 14), pos = UDim2.fromOffset(0, 2), z = 6,
+	})
+	local track = UIKit.frame({
+		parent = channelBar,
+		size = UDim2.new(1, -16, 0, 5),
+		pos = UDim2.new(0.5, 0, 1, -7), anchor = Vector2.new(0.5, 1),
+		color = Color3.fromRGB(50, 46, 42), corner = 3, z = 6,
+	})
+	local fill = UIKit.frame({
+		parent = track, size = UDim2.fromScale(0, 1),
+		color = Palette.UIGood, corner = 3, z = 7,
+	})
+	fill.Name = "Fill"
+end
+
+local function showScare()
+	SoundBank.play("JumpScare", nil, { volumeScale = 0.9 })
+	if ClientState.settings.reduceMotion then
+		return
+	end
+	scareFrame.Visible = true
+	scareFrame.Rotation = (math.random() - 0.5) * 10
+	for _, eye in ipairs(scareEyes) do
+		eye.Size = UDim2.fromOffset(38 + math.random(0, 14), 20 + math.random(0, 12))
+		eye.Rotation = (math.random() - 0.5) * 24
+	end
+	task.delay(0.05, function()
+		-- one blink: they were closed, then they weren't
+		for _, eye in ipairs(scareEyes) do
+			eye.Visible = false
+		end
+		task.wait(0.04)
+		for _, eye in ipairs(scareEyes) do
+			eye.Visible = true
+		end
+	end)
+	task.delay(0.24, function()
+		scareFrame.Visible = false
+	end)
+end
+
+local function showChannel(seconds)
+	if channelThread then
+		pcall(task.cancel, channelThread)
+	end
+	local fill = channelBar:FindFirstChild("Fill", true)
+	channelBar.Visible = true
+	channelThread = task.spawn(function()
+		local start = os.clock()
+		while os.clock() - start < seconds do
+			if fill then
+				fill.Size = UDim2.fromScale(math.clamp((os.clock() - start) / seconds, 0, 1), 1)
+			end
+			task.wait(0.05)
+		end
+		channelBar.Visible = false
+	end)
 end
 
 ----------------------------------------------------------------
@@ -301,7 +389,10 @@ local function buildHotbar()
 	end
 end
 
-local function toolsInOrder()
+-- Tools keep the slot they arrived in; nothing shuffles underfoot.
+local slotOf = {} -- tool -> slot index
+
+local function currentTools()
 	local list = {}
 	local char = player.Character
 	if char then
@@ -319,18 +410,45 @@ local function toolsInOrder()
 			end
 		end
 	end
-	table.sort(list, function(a, b)
-		return (a:GetAttribute("ItemName") or a.Name) < (b:GetAttribute("ItemName") or b.Name)
-	end)
 	return list
 end
 
 local function refreshHotbar()
-	local tools = toolsInOrder()
+	local tools = currentTools()
 	local char = player.Character
+
+	-- drop vanished tools, then seat newcomers in the lowest empty slot
+	local present = {}
+	for _, tool in ipairs(tools) do
+		present[tool] = true
+	end
+	local used = {}
+	for tool, k in pairs(slotOf) do
+		if present[tool] then
+			used[k] = true
+		else
+			slotOf[tool] = nil
+		end
+	end
+	for _, tool in ipairs(tools) do
+		if not slotOf[tool] then
+			for k = 1, SLOT_COUNT do
+				if not used[k] then
+					slotOf[tool] = k
+					used[k] = true
+					break
+				end
+			end
+		end
+	end
+	local bySlot = {}
+	for tool, k in pairs(slotOf) do
+		bySlot[k] = tool
+	end
+
 	for k = 1, SLOT_COUNT do
 		local slot = hotbarSlots[k]
-		local tool = tools[k]
+		local tool = bySlot[k]
 		slot.tool = tool
 		if tool then
 			local name = tool:GetAttribute("ItemName") or tool.Name
@@ -839,7 +957,29 @@ function UIController.start()
 	Net.on(Net.T.BoardingState, onBoardingState)
 	Net.on(Net.T.TimetableNext, onTimetableNext)
 	Net.on(Net.T.SleeperStage, onSleeperStage)
-	Net.on(Net.T.Damage, onDamage)
+	Net.on(Net.T.Damage, function(data)
+		onDamage(data)
+		if type(data) == "table" and (data.amount or 0) >= 45 then
+			showScare()
+		end
+	end)
+	Net.on(Net.T.ItemState, function(data)
+		if type(data) == "table" and type(data.channel) == "number" then
+			showChannel(data.channel)
+		end
+	end)
+	local function hookDeath(char)
+		local hum = char:WaitForChild("Humanoid", 5)
+		if hum then
+			hum.Died:Connect(showScare)
+		end
+	end
+	if player.Character then
+		task.spawn(hookDeath, player.Character)
+	end
+	player.CharacterAdded:Connect(function(char)
+		task.spawn(hookDeath, char)
+	end)
 	Net.on(Net.T.ShopResult, function(data)
 		if data and data.ok == false and data.reason then
 			onToast({ text = "The machine declines: " .. data.reason, tone = "warn" })

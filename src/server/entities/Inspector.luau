@@ -102,9 +102,11 @@ local function isSeated(player)
 	return hum.Sit and hum.SeatPart ~= nil
 end
 
-local function fine(player, why)
+local function fine(player, visitIndex, why)
 	local taken = ctx.EconomyService.fine(player, E.FineFraction)
-	ctx.PlayerService.damage(player, E.Damage, "inspector")
+	local tiers = E.DamageByVisit
+	local damage = (tiers and tiers[math.min(visitIndex or #tiers, #tiers)]) or E.Damage
+	ctx.PlayerService.damage(player, damage, "inspector")
 	SoundBank.play("InspectorFine", ctx.TrainBuilder.carPosition(player:GetAttribute("CarIndex") or 1))
 	local msg = why or "No ticket. The fine is taken out of you."
 	if taken > 0 then
@@ -135,7 +137,7 @@ local function judge(player, visitIndex, punched)
 		if ctx.rng:NextNumber() < strict then
 			ctx.HideSystem.eject(player)
 			SoundBank.play("InspectorHmph", root)
-			fine(player, "Dragged out by the collar. Hiding from the railway is a second offense.")
+			fine(player, visitIndex, "Dragged out by the collar. Hiding from the railway is a second offense.")
 		end
 		return
 	end
@@ -146,12 +148,12 @@ local function judge(player, visitIndex, punched)
 			SoundBank.play("InspectorPunch", root)
 			Net.fireClient(player, Net.T.Subtitle, { text = "He punches your ticket. The holes spell something you decide not to read.", seconds = 4 })
 		else
-			fine(player, "Seated, but ticketless. The railway is not a charity.")
+			fine(player, visitIndex, "Seated, but ticketless. The railway is not a charity.")
 		end
 		return
 	end
 
-	fine(player)
+	fine(player, visitIndex)
 end
 
 ----------------------------------------------------------------

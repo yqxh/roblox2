@@ -54,6 +54,8 @@ local controllers = {
 	"CharacterFX",
 	"PromptTheme",
 	"GhostController",
+	"EntityFX",
+	"ScareDirector",
 	"UIController",
 }
 

@@ -9,7 +9,7 @@ local Config = {}
 
 Config.GameName = "THE 11:59"
 Config.Tagline = "The last train out of the valley."
-Config.Version = "0.9.0"
+Config.Version = "0.9.5"
 
 ----------------------------------------------------------------
 -- Train geometry. The train is static in the world; the night
@@ -61,8 +61,10 @@ Config.Player = {
 	RoofSpeedCap = 13,
 	JumpHeight = 5,
 
-	SprintSeconds = 6,        -- full-tank sprint duration
+	SprintSeconds = 7.5,      -- full-tank sprint duration
 	StaminaRegenPerSecond = 0.22,
+
+	SoloSecondChance = true,  -- a lone rider's first death is a warning, not the end
 
 	BleedOutSeconds = 40,
 	ReviveHoldSeconds = 5,
@@ -107,7 +109,8 @@ Config.Entities = {
 	Inspector = {
 		WarnSeconds = 25,
 		WalkSpeed = 6.5,
-		Damage = 55,
+		Damage = 55,              -- fallback if DamageByVisit is trimmed
+		DamageByVisit = { 35, 55, 70 }, -- he grows less forgiving up the line
 		FineFraction = 0.3,       -- fare stolen when caught ticketless
 		StrictChance = { 0, 0.35, 0.7 }, -- per visit: odds he checks hide spots
 		PauseSeconds = 1.1,
@@ -160,6 +163,23 @@ Config.Timetable = {
 	BeamSpacing = 420,           -- studs between low beams while on a gorge
 	GraceAfterDamageSeconds = 12,-- no fresh scheduled events right after a mauling
 	FirstEventCar = 3,           -- cars 1-2 are safe to learn the ropes
+}
+
+----------------------------------------------------------------
+-- Ambient scares (client-local, personal, never damaging)
+----------------------------------------------------------------
+Config.Scares = {
+	MinGapSeconds = 45,
+	MaxGapSeconds = 115,
+	FirstScareCar = 2,
+	Weights = {
+		phantom = 30,    -- a passenger who was never there
+		stutter = 25,    -- the gaslight forgets itself
+		whisper = 20,    -- someone close behind you
+		coldpass = 15,   -- something moves through you
+		doorcreak = 10,  -- the door ahead opens a hand's width
+	},
+	MimicBreathRange = 9, -- uneasy luggage is audible this close
 }
 
 ----------------------------------------------------------------

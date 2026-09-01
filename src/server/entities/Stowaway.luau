@@ -62,6 +62,7 @@ end
 
 function Stowaway.trigger(node, player)
 	local part = node.part
+	part:SetAttribute("Uneasy", nil) -- sprung: it has nothing left to hide
 	local origin = part.CFrame
 
 	-- the case blooms into teeth

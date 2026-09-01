@@ -212,6 +212,20 @@ end
 ----------------------------------------------------------------
 -- Pulses
 ----------------------------------------------------------------
+-- Exposed hooks for the ambient scare system
+function LightingDirector.stormFor(seconds)
+	furnaceFlickerUntil = math.max(furnaceFlickerUntil, os.clock() + (seconds or 1.2))
+end
+
+function LightingDirector.coldPulse()
+	pulseCC.TintColor = Color3.fromRGB(170, 195, 235)
+	pulseCC.Contrast = 0.1
+	pulseCC.Saturation = -0.3
+	TweenService:Create(pulseCC, TweenInfo.new(1.6, Enum.EasingStyle.Sine), {
+		TintColor = Color3.new(1, 1, 1), Contrast = 0, Saturation = 0,
+	}):Play()
+end
+
 local function damagePulse()
 	pulseCC.TintColor = Color3.fromRGB(255, 120, 110)
 	pulseCC.Contrast = 0.25

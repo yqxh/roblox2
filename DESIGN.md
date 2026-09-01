@@ -73,6 +73,9 @@ the glass costs the server nothing.
   anything but they can **see** — unopened containers glow through the
   walls, and mimicked luggage glows red — and they can **ping**. The
   next station revives them. Late joiners board mid-run as ghosts.
+  A rider with no living companions gets one **second chance** per run:
+  their first death costs half their fare and puts them back on their
+  feet at the rear of the train instead of into ghosthood.
 - **Stamina**: 6 s of sprint, slow regen. **Crouch**: slow and quiet.
 - **Noise** (server-computed, 0–1, shown as a candle flame that fattens):
   movement speed, jumps, door bashes, pried crates, flares, the piano.
@@ -83,7 +86,9 @@ the glass costs the server nothing.
 **Fare** spills out of everything you rummage: under-seat bags, luggage
 racks, sleeper drawers, dining cabinets, mail sacks, nailed crates (pry
 bar: fast and quiet; shoulder: slow and loud), a caged strongbox, the
-red car's chests. Two vending stops to spend it.
+red car's chests — and lashed **roof cargo** on ~a third of enclosed
+cars, so the roof route is an economy, not just a Furnace dodge. Two
+vending stops to spend it.
 
 Items (all procedural Tools; passives are counters):
 **Torch** (battery-limited spotlight) · **Oil Lantern** (bright, warm,
@@ -125,11 +130,15 @@ deterministic per seed.
    through you.
 4. **The Parallel** — something keeps pace with the train, out in the
    fields at window height, or standing on the far end of a flatcar
-   deck. Each rider's own gaze is measured client-side and arbitrated by
-   the server: 2.2 s of looking starts the whispers, 4 s and it comes
-   through the nearest pane (45 damage, the window stays broken and
-   howling until the next station). Blinds block it entirely — pulling
-   them is teamwork.
+   deck. It obeys one rule, rendered per-client: **watched, it freezes
+   mid-stride (only its head finds your face); unwatched, it closes the
+   distance**, from the treeline to breathing on the glass, whispering
+   louder the nearer it stands. Meanwhile your own gaze is measured and
+   arbitrated by the server: 2.2 s of looking starts the whispers, 4 s
+   and it comes through the nearest pane (45 damage, the window stays
+   broken and howling until the next station). Blinds block it
+   entirely — pulling them is teamwork. So the choice each time: pin it
+   with your eyes and ration your seconds, or look away and let it walk.
 5. **The Stowaway** — some luggage packed itself. Mimicked suitcases,
    crates and chests (8% early, 20% past car 15, always two among the
    red car's five chests) bite for 35, steal one belonging, and drag it
@@ -146,6 +155,22 @@ deterministic per seed.
    doesn't). His shovel downs riders in two hits. A flare landing within
    seven studs blinds him for 5 s. He cannot leave the tender — car 27
    is the retreat line.
+
+## The small lies (ambient scare director)
+
+Between real events, each client runs a private scare scheduler
+(45–115 s apart, suppressed near genuine tells so ambient dread never
+teaches a false lesson): a passenger seated ahead who was never there
+(approach or stare and they gutter out), gaslight stutters, a whisper
+just behind the ear, a cold pass through the chest, the door ahead
+easing open a hand's width. All personal, all harmless, all unshared —
+"did anyone else see that?" is designed to have no witnesses. The same
+system gives mimicked luggage its promised tell: within nine studs, the
+case audibly breathes and faintly shivers.
+
+Big hits (≥45) and deaths land a quarter-second jumpscare frame — a
+black flash with pale eyes that blink once — skipped entirely by the
+"Steady camera" accessibility toggle (the sound remains).
 
 ## The Timetable (director)
 

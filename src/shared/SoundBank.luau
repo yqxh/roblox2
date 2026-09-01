@@ -115,6 +115,7 @@ SoundBank.Cues = {
 	Uncouple = { { "Snap", 0.5, 1 }, { "Land", 0.35, 0.9, 0.1 }, { "Unsheath", 0.5, 0.7, 0.3 } },
 
 	-- World stingers
+	JumpScare = { { "Moan", 1.9, 0.9 }, { "Land", 0.5, 0.8, 0.02 }, { "Slash", 1.5, 0.6, 0.04 } },
 	StationBell = { { "Ping", 0.66, 0.5 }, { "Ping", 0.66, 0.4, 0.9 } },
 	TunnelIn = { { "Falling", 0.4, 0.6 }, { "Moan", 0.5, 0.4, 0.3 } },
 	BeamWhoosh = { { "Swoosh", 0.45, 0.9 } },

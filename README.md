@@ -79,13 +79,18 @@ inside it to depart early).
   drinks light, and whoever holds it. A thrown flare is a meal that
   buys the rest of you time.
 - **Don't stare at the thing outside the windows.** Pull the blinds.
-- **Some luggage breathes.** Listen before you open.
+- **Some luggage breathes.** Stand close and listen before you open;
+  marked cases shiver.
+- **The roof pays rent**: some cars carry lashed cargo up top — good
+  loot, if you survive the wind, the beams, and the climb.
 - One car on the train is asleep. **Keep it that way.**
 - Downed friends can be lifted (hold E). The dead ride on as **ghosts** —
   they can scout loot through the walls and mark mimics — and are made
   solid again at the next station stop. If everyone is a ghost, the
   line keeps you.
 - The train stops twice, briefly. **The 11:59 waits for no one.**
+- Riding alone? Your first death is refunded — at interest. There is no
+  third courtesy.
 
 The run ends at the tender: crank the coupling release while the
 Engineer stalks the coal, and ride the freed cars into the sunrise.

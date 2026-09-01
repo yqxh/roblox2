@@ -92,16 +92,19 @@ local function startWheelRhythm()
 	end)
 end
 
--- the engine moans somewhere ahead, now and then
+-- the engine moans somewhere ahead, now and then — even at the platform
 local function startDistantMoans()
 	task.spawn(function()
 		while true do
 			task.wait(math.random(70, 160))
-			if ClientState.speed > 10 and not ClientState.inTunnel then
-				SoundBank.play("WhistleFar", nil, {
-					volumeScale = 0.5 * ClientState.settings.ambienceVolume,
-					group = groups.Ambience,
-				})
+			if not ClientState.inTunnel then
+				local moving = ClientState.speed > 10
+				if moving or ClientState.runState == "Lobby" then
+					SoundBank.play("WhistleFar", nil, {
+						volumeScale = (moving and 0.5 or 0.3) * ClientState.settings.ambienceVolume,
+						group = groups.Ambience,
+					})
+				end
 			end
 		end
 	end)

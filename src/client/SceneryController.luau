@@ -41,6 +41,7 @@ local moon = nil
 
 local chunks = {}    -- index -> {model}
 local farChunks = {} -- index -> {model}
+local specials = {}  -- one-off set pieces pinned to track coordinates
 local seed = 0
 
 ----------------------------------------------------------------
@@ -533,6 +534,14 @@ local function updateChunks()
 	if moon then
 		moon.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(240, 210, -520))
 	end
+
+	-- set pieces pinned to the track (the terminus at dawn)
+	for _, special in ipairs(specials) do
+		special.model:PivotTo(CFrame.new(special.s - d, 0, 0))
+		if special.lanternEmitter and not special.lanternEmitter.Enabled and ClientState.speed < 3 then
+			special.lanternEmitter.Enabled = true
+		end
+	end
 end
 
 ----------------------------------------------------------------
@@ -582,9 +591,120 @@ local function beamSweep(eta)
 end
 
 ----------------------------------------------------------------
--- The Parallel (rendered here; gaze reported to the server)
+-- One-off set pieces pinned to track coordinates (victory terminus)
 ----------------------------------------------------------------
-local parallel = nil -- {model, car, side, endsAt, parts}
+local function clearSpecials()
+	for _, special in ipairs(specials) do
+		special.model:Destroy()
+	end
+	table.clear(specials)
+end
+
+local function buildTerminus()
+	local model = Instance.new("Model")
+	model.Name = "TerminusArrival"
+	-- anchored ahead of the camera so it slides up beside the cars as they slow
+	local cam = workspace.CurrentCamera
+	local camX = cam and cam.CFrame.Position.X or (Config.Train.Cars * Config.Train.CarPitch)
+	local s = ClientState.distance + camX + 150
+
+	local function part(spec)
+		spec.parent = model
+		spec.cancollide = false
+		spec.canquery = false
+		return Forge.part(spec)
+	end
+	-- warm ground and platform running alongside
+	part({
+		size = Vector3.new(560, 1, 220),
+		cf = CFrame.new(280, GROUND_Y - 0.4, 40),
+		color = Color3.fromRGB(46, 44, 40), material = M.Ground,
+	})
+	part({
+		size = Vector3.new(240, 1.2, 14),
+		cf = CFrame.new(160, Config.Train.FloorY - 0.6, Config.Train.CarWidth / 2 + 7.5),
+		color = Palette.Gravel, material = M.Concrete,
+	})
+	local board = part({
+		size = Vector3.new(22, 4, 0.8),
+		cf = CFrame.new(160, Config.Train.FloorY + 7, Config.Train.CarWidth / 2 + 13),
+		color = Color3.fromRGB(24, 26, 28), material = M.Wood,
+	})
+	Forge.surfaceText(board, Enum.NormalId.Front, "T E R M I N U S", {
+		color = Palette.CarLetters, font = Palette.FontHeader, pps = 36,
+	})
+	for px = 70, 250, 30 do
+		part({
+			size = Vector3.new(0.5, 6.5, 0.5),
+			cf = CFrame.new(px, Config.Train.FloorY + 3.25, Config.Train.CarWidth / 2 + 6),
+			color = Color3.fromRGB(30, 32, 34), material = M.Metal,
+		})
+		local head = part({
+			size = Vector3.new(1, 1.2, 1),
+			cf = CFrame.new(px, Config.Train.FloorY + 7, Config.Train.CarWidth / 2 + 6),
+			color = Palette.LampGlass, material = M.Neon,
+		})
+		local light = Instance.new("PointLight")
+		light.Color = Palette.LampGlow
+		light.Range = 18
+		light.Brightness = 1
+		light.Parent = head
+	end
+	-- the ones who waited, lanterns raised
+	for k = 1, 3 do
+		local gx = 120 + k * 26
+		local gz = Config.Train.CarWidth / 2 + 9
+		part({
+			size = Vector3.new(1.4, 4.6, 0.9),
+			cf = CFrame.new(gx, Config.Train.FloorY + 2.3, gz),
+			color = Color3.fromRGB(18, 17, 20), material = M.Fabric,
+		})
+		part({
+			size = Vector3.new(0.8, 0.9, 0.8),
+			cf = CFrame.new(gx, Config.Train.FloorY + 5.1, gz),
+			color = Color3.fromRGB(18, 17, 20), material = M.Fabric,
+		})
+		local lantern = part({
+			size = Vector3.new(0.5, 0.7, 0.5),
+			cf = CFrame.new(gx + (k == 2 and 1.1 or 0.8), Config.Train.FloorY + (k == 2 and 5.6 or 3.4), gz - 0.8),
+			color = Palette.LampGlass, material = M.Neon,
+		})
+		local glow = Instance.new("PointLight")
+		glow.Color = Palette.LampGlow
+		glow.Range = 12
+		glow.Brightness = 0.9
+		glow.Parent = lantern
+	end
+	-- sky lanterns released as the cars come to rest
+	local release = part({
+		size = Vector3.new(160, 0.5, 8),
+		cf = CFrame.new(160, Config.Train.FloorY + 4, Config.Train.CarWidth / 2 + 9),
+		color = Color3.new(0, 0, 0), material = M.Smooth, transparency = 1,
+	})
+	local att = Instance.new("Attachment")
+	att.Parent = release
+	local emitterInst = Instance.new("ParticleEmitter")
+	emitterInst.Color = ColorSequence.new(Palette.LampGlow, Color3.fromRGB(255, 140, 90))
+	emitterInst.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(1, 0.4) })
+	emitterInst.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.85, 0.35), NumberSequenceKeypoint.new(1, 1) })
+	emitterInst.Lifetime = NumberRange.new(6, 9)
+	emitterInst.Rate = 2.5
+	emitterInst.Speed = NumberRange.new(2, 4)
+	emitterInst.SpreadAngle = Vector2.new(14, 14)
+	emitterInst.Acceleration = Vector3.new(0.6, 2.2, 0)
+	emitterInst.LightEmission = 1
+	emitterInst.LightInfluence = 0
+	emitterInst.Enabled = false
+	emitterInst.Parent = att
+
+	model.Parent = fxFolder
+	table.insert(specials, { model = model, s = s, lanternEmitter = emitterInst })
+end
+
+----------------------------------------------------------------
+-- The Parallel: freezes when watched, closes when it isn't
+----------------------------------------------------------------
+local parallel = nil -- {model, car, side, endsAt, parts, closeness}
 
 local function clearParallel()
 	if parallel then
@@ -634,6 +754,10 @@ local function spawnParallel(data)
 		legs = legs,
 		phase = rng:NextNumber(0, 6),
 		gazeAccum = 0,
+		runPhase = 0,
+		closeness = 0,       -- 0 = out in the fields, ~0.9 = at the glass
+		unwatchedFor = 0,
+		lastWhisper = 0,
 	}
 end
 
@@ -646,34 +770,79 @@ local function parallelStep(dt)
 		clearParallel()
 		return
 	end
+
+	local cam = workspace.CurrentCamera
+	local inItsCar = ClientState.carIndex == p.car and not ClientState.isGhost()
 	local carX0 = (p.car - 1) * Config.Train.CarPitch
-	local baseY = Config.Train.FloorY + 3.2
+
+	-- position: distance from the train shrinks as it goes unwatched
 	local pos
 	if p.side == 0 then
-		-- on the flatcar deck itself, at the far end
-		pos = Vector3.new(carX0 + 40, Config.Train.FloorY + 3.4, 4.2)
+		-- flatcar deck: it stands at the far end and simply ends up nearer
+		local myRoot = ClientState.localRoot()
+		local targetX = (inItsCar and myRoot) and myRoot.Position.X or (carX0 + 6)
+		local farX = carX0 + 40
+		pos = Vector3.new(
+			farX + (targetX - farX) * p.closeness * 0.8,
+			Config.Train.FloorY + 3.4,
+			4.2 - p.closeness * 1.6
+		)
 	else
-		local drift = math.sin(os.clock() * 0.6 + p.phase) * 9
-		pos = Vector3.new(carX0 + 22 + drift, baseY, p.side * (16 + math.sin(os.clock() * 0.9 + p.phase) * 3))
+		local reach = 17 - p.closeness * 12 -- down to ~5: breathing on the glass
+		local drift = math.sin(os.clock() * 0.6 + p.phase) * 9 * (1 - p.closeness)
+		pos = Vector3.new(
+			carX0 + 22 + drift,
+			Config.Train.FloorY + 3.2 + p.closeness * 0.9,
+			p.side * (reach + math.sin(os.clock() * 0.9 + p.phase) * 2 * (1 - p.closeness))
+		)
 	end
-	local runPhase = os.clock() * 9
+
+	-- am I looking at it?
+	local watched = false
+	local dot = -1
+	if cam then
+		local toIt = pos - cam.CFrame.Position
+		if toIt.Magnitude > 1 then
+			dot = cam.CFrame.LookVector:Dot(toIt.Unit)
+			watched = inItsCar and dot > 0.78
+		end
+	end
+
+	if watched then
+		p.unwatchedFor = 0
+	else
+		p.unwatchedFor += dt
+		if p.unwatchedFor >= 1.6 and inItsCar then
+			p.unwatchedFor = 0
+			p.closeness = math.min(p.closeness + 0.14, 0.9)
+		end
+	end
+
+	-- pose: it only moves while nobody holds it in their eye
+	if not watched then
+		p.runPhase += dt * 9
+	end
+	local runPhase = p.runPhase
 	local look = CFrame.lookAt(pos, Vector3.new(pos.X, pos.Y, 0))
 	p.torso.CFrame = look * CFrame.new(0, math.abs(math.sin(runPhase)) * 0.3, 0)
-	p.head.CFrame = p.torso.CFrame * CFrame.new(0, 2.2, 0)
+	if watched and cam then
+		-- frozen mid-stride, head wrong: it has already found your face
+		local headPos = (p.torso.CFrame * CFrame.new(0, 2.2, 0)).Position
+		p.head.CFrame = CFrame.lookAt(headPos, cam.CFrame.Position) * CFrame.Angles(0, 0, math.rad(9))
+	else
+		p.head.CFrame = p.torso.CFrame * CFrame.new(0, 2.2, 0)
+	end
 	p.legs[1].CFrame = p.torso.CFrame * CFrame.new(-0.35, -3.2, 0) * CFrame.Angles(math.sin(runPhase) * 0.8, 0, 0)
 	p.legs[2].CFrame = p.torso.CFrame * CFrame.new(0.35, -3.2, 0) * CFrame.Angles(-math.sin(runPhase) * 0.8, 0, 0)
 
-	-- gaze detection: am I in that car, and staring?
-	if ClientState.carIndex ~= p.car or ClientState.isGhost() then
-		return
+	-- the nearer it stands, the more it has to say
+	if inItsCar and p.closeness > 0.3 and os.clock() - p.lastWhisper > 4.5 then
+		p.lastWhisper = os.clock()
+		SoundBank.play("ParallelWhisper", pos, { volumeScale = 0.3 + p.closeness * 0.5, max = 60 })
 	end
-	local cam = workspace.CurrentCamera
-	if not cam then
-		return
-	end
-	local toIt = (pos - cam.CFrame.Position)
-	local dot = cam.CFrame.LookVector:Dot(toIt.Unit)
-	if dot > 0.82 then
+
+	-- gaze arbitration stays server-side and unchanged
+	if watched then
 		p.gazeAccum += dt
 		if p.gazeAccum >= 0.25 then
 			Net.fire(Net.T.GazeReport, { car = p.car, side = p.side, seconds = math.min(p.gazeAccum, 0.4) })
@@ -722,6 +891,15 @@ function SceneryController.start()
 	RunService.Heartbeat:Connect(function(dt)
 		updateChunks()
 		parallelStep(dt)
+	end)
+
+	ClientState.signals.runStateChanged:connect(function(state)
+		if state == "Victory" then
+			buildTerminus()
+		elseif state == "Lobby" then
+			clearSpecials()
+			clearParallel()
+		end
 	end)
 
 	Net.on(Net.T.BeamWarn, function(data)
