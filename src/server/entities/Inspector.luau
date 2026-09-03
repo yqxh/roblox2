@@ -74,7 +74,7 @@ local function buildInspectorRig()
 		size = Vector3.new(0.36 * u, 0.4 * u, 0.36 * u),
 		color = Palette.InspectorLantern, material = Enum.Material.Neon, cancollide = false, castshadow = false,
 	})
-	Forge.light(lanternGlass, { color = Palette.InspectorLantern, range = 18, brightness = 1.4, shadows = true })
+	Forge.light(lanternGlass, { color = Palette.InspectorLantern, range = 16, brightness = 1.9, shadows = true })
 
 	local baseSetCF = rig.setCF
 	rig.setCF = function(pelvisCF, dt, moveSpeed)

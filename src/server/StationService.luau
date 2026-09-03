@@ -73,7 +73,7 @@ local function buildMachine(model, cf, entry, stationNumber, index)
 		cf = cf * CFrame.new(0, 2.9, -0.75),
 		color = Palette.LampGlass, material = M.Neon, cancollide = false,
 	})
-	Forge.light(lamp, { color = Palette.LampGlow, range = 8, brightness = 0.6, shadows = false })
+	Forge.light(lamp, { color = Palette.LampGlow, range = 7, brightness = 1.0, shadows = false })
 	local machineId = ("st%d_m%d"):format(stationNumber, index)
 	ctx.EconomyService.registerMachine(machineId, body, { [entry.item] = true })
 	local prompt = Forge.prompt(body, {
@@ -169,7 +169,7 @@ local function buildPlatform(stationNumber, name)
 			cf = CFrame.new(cx + px, FLOOR + 7, zNear + 5.5),
 			color = Palette.LampGlass, material = M.Neon, cancollide = false,
 		})
-		Forge.light(head, { color = Palette.LampGlow, range = 16, brightness = 0.9, flicker = true, shadows = true })
+		Forge.light(head, { color = Palette.LampGlow, range = 13, brightness = 1.5, flicker = true, shadows = true })
 	end
 
 	-- vending row: unrotated, so the Front (-Z) faces sell toward the train

@@ -192,13 +192,35 @@ function DoorSystem.buildBoundary(i, entryThis, entryNext)
 			})
 		end
 	else
-		-- accordion gangway
-		for k = -1, 1 do
+		-- accordion gangway: five-ring pleat, alternating profile so the
+		-- bellows read as folded canvas instead of a tube
+		for k = -2, 2 do
+			local even = k % 2 == 0
 			Forge.ring({
 				parent = model, name = "Bellows",
-				width = 8.6, height = 8.4, thick = 0.5, depth = 0.5,
-				cf = CFrame.new(xc + k * 1.3, FLOOR + 4.4, 0) * CFrame.Angles(0, math.rad(90), 0),
-				color = Color3.fromRGB(24, 24, 26), material = M.Fabric,
+				width = even and 8.8 or 8.2, height = even and 8.6 or 8.0,
+				thick = 0.45, depth = 0.45,
+				cf = CFrame.new(xc + k * 0.8, FLOOR + 4.4, 0) * CFrame.Angles(0, math.rad(90), 0),
+				color = even and Color3.fromRGB(24, 24, 26) or Color3.fromRGB(36, 34, 37),
+				material = M.Fabric,
+			})
+		end
+		-- canvas hood bridging the two cars' eaves lines
+		Forge.part({
+			parent = model, name = "GangHood",
+			size = Vector3.new(3.4, 0.4, 7.0),
+			cf = CFrame.new(xc, 19.0, 0),
+			color = Color3.fromRGB(24, 24, 26), material = M.Fabric,
+			cancollide = false, canquery = false,
+		})
+		-- diaphragm striker plates at the bellows shoulders
+		for _, side in ipairs({ -1, 1 }) do
+			Forge.part({
+				parent = model, name = "Diaphragm",
+				size = Vector3.new(0.25, 7.8, 1.1),
+				cf = CFrame.new(xc, 14.1, side * 4.05),
+				color = Color3.fromRGB(30, 30, 33), material = M.Metal,
+				cancollide = false, canquery = false, castshadow = false,
 			})
 		end
 		-- side walls with station doors

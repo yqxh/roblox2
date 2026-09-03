@@ -22,6 +22,7 @@ local Palette = require(Shared.Palette)
 local RunPlan = require(Shared.RunPlan)
 local SoundBank = require(Shared.SoundBank)
 local ClientState = require(script.Parent:WaitForChild("ClientState"))
+local LightingDirector = require(script.Parent:WaitForChild("LightingDirector"))
 
 local SceneryController = {}
 
@@ -38,6 +39,9 @@ local chunkFolder = nil
 local farFolder = nil
 local fxFolder = nil
 local moon = nil
+local moonHaloInner = nil
+local moonHaloOuter = nil
+local lastBiomeSent = nil
 
 local chunks = {}    -- index -> {model}
 local farChunks = {} -- index -> {model}
@@ -46,58 +50,33 @@ local seed = 0
 
 ----------------------------------------------------------------
 -- Piece builders (local coordinates: x in [0, CHUNK), z world)
+-- Every scenery part: cancollide/canquery false, castshadow false —
+-- the sun is down; shadow flags on a thousand night parts are pure cost.
 ----------------------------------------------------------------
-local function pineTree(parent, rng, x, z)
-	local h = rng:NextNumber(9, 22)
-	local trunk = Forge.part({
-		parent = parent, name = "Trunk",
-		size = Vector3.new(0.8, h * 0.35, 0.8),
-		cf = CFrame.new(x, GROUND_Y + h * 0.175, z),
-		color = Palette.PineTrunk, material = M.Wood, cancollide = false, canquery = false,
-	})
-	for tier = 0, 2 do
-		local w = (3.6 - tier) * (h / 14)
-		Forge.part({
-			parent = parent, name = "Canopy",
-			size = Vector3.new(w * 2, h * 0.28, w * 2),
-			cf = CFrame.new(x, GROUND_Y + h * (0.4 + tier * 0.2), z) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0),
-			color = Palette.PineDark, material = M.Grass, cancollide = false, canquery = false,
-		})
+local function scen(parent, spec)
+	spec.parent = parent
+	spec.cancollide = false
+	spec.canquery = false
+	spec.castshadow = false
+	if spec.shape == "wedge" then
+		spec.shape = nil
+		return Forge.wedge(spec)
+	elseif spec.shape == "cyl" then
+		spec.shape = nil
+		return Forge.cyl(spec)
+	elseif spec.shape == "ball" then
+		spec.shape = nil
+		return Forge.ball(spec)
 	end
-	return trunk
+	return Forge.part(spec)
 end
 
-local function telegraphPole(parent, x, z)
-	Forge.part({
-		parent = parent, name = "Pole",
-		size = Vector3.new(0.5, 13, 0.5),
-		cf = CFrame.new(x, GROUND_Y + 6.5, z),
-		color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
-	})
-	Forge.part({
-		parent = parent, name = "Crossarm",
-		size = Vector3.new(0.3, 0.3, 3.4),
-		cf = CFrame.new(x, GROUND_Y + 11.6, z),
-		color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
-	})
-	-- sagging wire to the next pole
-	Forge.part({
-		parent = parent, name = "Wire",
-		size = Vector3.new(CHUNK, 0.08, 0.08),
-		cf = CFrame.new(x + CHUNK / 2, GROUND_Y + 11.1, z) * CFrame.Angles(0, 0, math.rad(1.2)),
-		color = Color3.fromRGB(20, 20, 22), material = M.Metal, cancollide = false, canquery = false, castshadow = false,
-	})
-end
-
-local function groundSlabs(parent, color, material)
-	for _, side in ipairs({ -1, 1 }) do
-		Forge.part({
-			parent = parent, name = "Ground",
-			size = Vector3.new(CHUNK, 1, 210),
-			cf = CFrame.new(CHUNK / 2, GROUND_Y - 0.5, side * (105 + 5)),
-			color = color, material = material, cancollide = false, canquery = false,
-		})
-	end
+local function jitterColor(rng, color, amount)
+	local a = amount or 6
+	local r = math.clamp(color.R * 255 + rng:NextNumber(-a, a), 0, 255)
+	local g = math.clamp(color.G * 255 + rng:NextNumber(-a, a), 0, 255)
+	local b = math.clamp(color.B * 255 + rng:NextNumber(-a, a), 0, 255)
+	return Color3.fromRGB(r, g, b)
 end
 
 local function trackBed(parent)
@@ -120,10 +99,182 @@ local function trackBed(parent)
 			parent = parent, name = "Rail",
 			size = Vector3.new(CHUNK, 0.45, 0.4),
 			cf = CFrame.new(CHUNK / 2, RAIL_TOP - 0.22, z),
-			color = Palette.RailSteel, material = M.Metal, reflectance = 0.22,
+			color = Palette.RailSteel, material = M.Metal, reflectance = 0.35,
 			cancollide = false, canquery = false, castshadow = false,
 		})
 	end
+end
+
+-- Layered roadbed: three receding ground terraces, value patches, ballast
+-- shoulders, and a drainage ditch — kills the flat-slab look everywhere.
+local function roadbed(parent, rng, verge, mid, far, material, opts)
+	opts = opts or {}
+	for _, side in ipairs({ -1, 1 }) do
+		scen(parent, { name = "Verge", size = Vector3.new(96, 1, 25.1), cf = CFrame.new(48, 5.10, side * 21.45), color = verge, material = material })
+		scen(parent, { name = "Mid", size = Vector3.new(96, 1, 70), cf = CFrame.new(48, 4.85, side * 69), color = mid, material = material })
+		scen(parent, { name = "Far", size = Vector3.new(96, 1, 110), cf = CFrame.new(48, 4.55, side * 159), color = far, material = material })
+	end
+	for _ = 1, 3 do
+		local px = rng:NextNumber(8, 88)
+		local pside = rng:NextNumber() < 0.5 and -1 or 1
+		local pz = pside * rng:NextNumber(12, 90)
+		local strip = math.abs(pz) < 34 and verge or (math.abs(pz) < 104 and mid or far)
+		local top = math.abs(pz) < 34 and 5.60 or (math.abs(pz) < 104 and 5.35 or 5.05)
+		scen(parent, {
+			name = "Patch",
+			size = Vector3.new(rng:NextNumber(14, 30), 0.18, rng:NextNumber(10, 22)),
+			cf = CFrame.new(px, top + 0.05, pz),
+			color = jitterColor(rng, strip, 6), material = material,
+		})
+	end
+	for _, side in ipairs({ -1, 1 }) do
+		scen(parent, {
+			shape = "wedge", name = "Shoulder",
+			size = Vector3.new(96, 0.8, 2.2),
+			cf = CFrame.new(48, 5.90, side * 5.1) * CFrame.Angles(0, side * math.rad(90), 0),
+			color = Palette.Gravel, material = M.Slate,
+		})
+		if opts.wetDitch then
+			scen(parent, {
+				name = "Ditch", size = Vector3.new(96, 0.3, 2.7),
+				cf = CFrame.new(48, 5.13, side * 7.55),
+				color = Palette.MarshWater, material = M.Glass,
+				transparency = 0.25, reflectance = 0.35,
+			})
+		else
+			scen(parent, {
+				name = "Ditch", size = Vector3.new(96, 0.3, 2.7),
+				cf = CFrame.new(48, 5.13, side * 7.55),
+				color = Palette.DitchDark, material = M.Slate,
+			})
+		end
+	end
+	trackBed(parent)
+end
+
+local function telegraphPoleV2(parent, rng, x, side, leanRange)
+	local lr = leanRange or 0.06
+	local lean = CFrame.Angles(rng:NextNumber(-0.04, 0.04), 0, rng:NextNumber(-lr, lr))
+	local base = CFrame.new(x, GROUND_Y, side * 22) * lean
+	scen(parent, {
+		name = "Pole", size = Vector3.new(0.5, 13, 0.5),
+		cf = base * CFrame.new(0, 6.5, 0),
+		color = Palette.SnagWood, material = M.Wood,
+	})
+	scen(parent, {
+		name = "Crossarm", size = Vector3.new(0.3, 0.3, 3.4),
+		cf = base * CFrame.new(0, 11.6, 0),
+		color = Palette.SnagWood, material = M.Wood,
+	})
+	scen(parent, {
+		name = "Wire", size = Vector3.new(CHUNK, 0.08, 0.08),
+		cf = CFrame.new(x + CHUNK / 2, GROUND_Y + 11.1, side * 22) * CFrame.Angles(0, 0, math.rad(1.2)),
+		color = Color3.fromRGB(20, 20, 22), material = M.Metal,
+	})
+end
+
+local function pineTreeV2(parent, rng, x, z)
+	local h = rng:NextNumber(10, 24)
+	local lean = CFrame.Angles(rng:NextNumber(-0.03, 0.03), 0, rng:NextNumber(-0.03, 0.03))
+	local base = CFrame.new(x, GROUND_Y, z) * lean
+	scen(parent, {
+		name = "Trunk", size = Vector3.new(0.9, h * 0.35, 0.9),
+		cf = base * CFrame.new(0, h * 0.175, 0),
+		color = Palette.PineTrunk, material = M.Wood,
+	})
+	local treeColor = Palette.PineDark:Lerp(Palette.PineMid, rng:NextNumber())
+	for t = 0, 3 do
+		local w = math.max((4.2 - t) * h / 16, 0.9)
+		scen(parent, {
+			name = "Canopy", size = Vector3.new(w * 2, h * 0.22, w * 2),
+			cf = CFrame.new(x, GROUND_Y + h * (0.34 + 0.19 * t), z) * CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+			color = jitterColor(rng, treeColor, 4), material = M.Grass,
+		})
+	end
+	scen(parent, {
+		name = "Tip", size = Vector3.new(0.9, h * 0.14, 0.9),
+		cf = CFrame.new(x, GROUND_Y + h * 0.99, z),
+		color = jitterColor(rng, Palette.PineDark, 3), material = M.Grass,
+	})
+end
+
+-- Serrated silhouette wall: reads as a full treeline for 7 parts.
+local function treelineWall(parent, rng, side, zPush)
+	local boxes = {}
+	local specs = {
+		{ 52, rng:NextNumber(14, 18), rng:NextNumber(20, 28), rng:NextNumber(50, 56) },
+		{ 56, rng:NextNumber(10, 14), rng:NextNumber(68, 76), rng:NextNumber(52, 58) },
+	}
+	for _, s in ipairs(specs) do
+		local w, h, xc, zc = s[1], s[2], s[3], s[4]
+		zc = zPush and (zPush + (zc - 53)) or zc
+		local box = scen(parent, {
+			name = "Treeline", size = Vector3.new(w, h, 7),
+			cf = CFrame.new(xc, 5.0 + h / 2, side * zc),
+			color = Palette.TreelineDark, material = M.Grass,
+		})
+		table.insert(boxes, { part = box, xc = xc, w = w, zc = zc, topY = 5.0 + h })
+	end
+	for k = 0, 4 do
+		local tx = 8 + k * 18 + rng:NextNumber(-3, 3)
+		local host = (math.abs(tx - boxes[1].xc) < boxes[1].w / 2 + 4) and boxes[1] or boxes[2]
+		local th = rng:NextNumber(7, 12)
+		scen(parent, {
+			shape = "wedge", name = "Serration",
+			size = Vector3.new(10, th, 7),
+			cf = CFrame.new(tx, host.topY + th / 2, side * host.zc)
+				* CFrame.Angles(0, rng:NextNumber() < 0.5 and math.rad(90) or math.rad(270), 0),
+			color = Palette.TreelineDark, material = M.Grass,
+		})
+	end
+end
+
+local function rock(parent, rng, x, z, recolor)
+	local sy = rng:NextNumber(1.2, 2.2)
+	scen(parent, {
+		name = "Rock",
+		size = Vector3.new(rng:NextNumber(2, 4), sy, rng:NextNumber(2, 4)),
+		cf = CFrame.new(x, GROUND_Y + sy * 0.25, z)
+			* CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, 3.14), rng:NextNumber(-0.35, 0.35)),
+		color = recolor or Palette.RockGray, material = M.Slate,
+	})
+end
+
+local function stump(parent, rng, x, z)
+	scen(parent, {
+		shape = "cyl", name = "Stump",
+		size = Vector3.new(rng:NextNumber(0.9, 1.4), 1.7, 1.7),
+		cf = CFrame.new(x, GROUND_Y + 0.5, z) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(rng:NextNumber(-0.06, 0.06), 0, 0),
+		color = Palette.PineTrunk, material = M.Wood,
+	})
+end
+
+local function bush(parent, rng, x, z)
+	local d = rng:NextNumber(2.4, 4.2)
+	scen(parent, {
+		shape = "ball", name = "Bush",
+		size = Vector3.new(d, d * 0.62, d),
+		cf = CFrame.new(x, GROUND_Y + d * 0.2, z),
+		color = Palette.TreelineDark:Lerp(Palette.PineDark, rng:NextNumber()), material = M.Grass,
+	})
+end
+
+local function mistCard(parent, rng, x, z, scale)
+	scen(parent, {
+		name = "Mist",
+		size = Vector3.new(rng:NextNumber(30, 46) * (scale or 1), 1.4, rng:NextNumber(14, 22) * (scale or 1)),
+		cf = CFrame.new(x, GROUND_Y + 0.9 + rng:NextNumber(0, 0.8), z) * CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+		color = Palette.MistBlue, material = M.Smooth, transparency = 0.86,
+	})
+end
+
+local function fogBank(parent, rng, x, z)
+	scen(parent, {
+		name = "FogBank",
+		size = Vector3.new(rng:NextNumber(34, 48), rng:NextNumber(6, 9), 0.6),
+		cf = CFrame.new(x, GROUND_Y + 4, z) * CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+		color = Palette.MistBlue, material = M.Smooth, transparency = 0.88,
+	})
 end
 
 ----------------------------------------------------------------
@@ -131,56 +282,58 @@ end
 ----------------------------------------------------------------
 local Builders = {}
 
+local GROUND_TRIPLETS = {
+	pine = { Color3.fromRGB(30, 37, 34), Color3.fromRGB(23, 29, 28), Color3.fromRGB(17, 22, 23), M.Grass },
+	marsh = { Color3.fromRGB(26, 32, 30), Color3.fromRGB(20, 26, 26), Color3.fromRGB(15, 20, 21), M.Mud },
+	fields = { Color3.fromRGB(36, 38, 29), Color3.fromRGB(28, 30, 24), Color3.fromRGB(20, 22, 19), M.Grass },
+	yard = { Color3.fromRGB(38, 38, 40), Color3.fromRGB(30, 30, 33), Color3.fromRGB(22, 22, 25), M.Ground },
+}
+
 function Builders.pine(parent, rng)
-	groundSlabs(parent, Palette.GroundNight, M.Grass)
-	trackBed(parent)
-	telegraphPole(parent, 8, -22)
-	for _ = 1, rng:NextInteger(6, 11) do
+	local t = GROUND_TRIPLETS.pine
+	roadbed(parent, rng, t[1], t[2], t[3], t[4])
+	telegraphPoleV2(parent, rng, 8, -1)
+	telegraphPoleV2(parent, rng, 56, 1)
+	treelineWall(parent, rng, -1)
+	treelineWall(parent, rng, 1)
+	-- individual pines only in the parseable band; the walls do the rest
+	local placedZ = {}
+	for _ = 1, 4 do
+		local x = rng:NextNumber(4, 92)
 		local side = rng:NextNumber() < 0.5 and -1 or 1
-		pineTree(parent, rng, rng:NextNumber(2, CHUNK - 2), side * rng:NextNumber(26, 180))
+		local z = side * rng:NextNumber(13, 40)
+		local retryZ = side * rng:NextNumber(13, 40) -- always burn the retry draw
+		for _, prev in ipairs(placedZ) do
+			if math.abs(prev.x - x) < 6 and math.abs(prev.z - z) < 5 then
+				z = retryZ
+				break
+			end
+		end
+		table.insert(placedZ, { x = x, z = z })
+		pineTreeV2(parent, rng, x, z)
 	end
+	if rng:NextNumber() < 0.5 then
+		pineTreeV2(parent, rng, rng:NextNumber(4, 92), (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(13, 40))
+	end
+	rock(parent, rng, rng:NextNumber(6, 90), (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(11, 30))
+	bush(parent, rng, rng:NextNumber(6, 90), (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(10, 26))
+	stump(parent, rng, rng:NextNumber(6, 90), (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(11, 32))
+	mistCard(parent, rng, rng:NextNumber(20, 76), -rng:NextNumber(14, 30), 1)
 	if rng:NextNumber() < 0.12 then
-		-- a leaning snag
-		Forge.part({
-			parent = parent, name = "Snag",
-			size = Vector3.new(0.9, 14, 0.9),
-			cf = CFrame.new(rng:NextNumber(10, 80), GROUND_Y + 6.5, rng:NextNumber(-60, -25))
+		scen(parent, {
+			name = "Snag", size = Vector3.new(0.9, 14, 0.9),
+			cf = CFrame.new(rng:NextNumber(10, 80), GROUND_Y + 6.5, -rng:NextNumber(25, 60))
 				* CFrame.Angles(0, 0, rng:NextNumber(-0.2, 0.2)),
-			color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
+			color = Palette.SnagWood, material = M.Wood,
 		})
 	end
 end
 
-function Builders.marsh(parent, rng)
-	groundSlabs(parent, Color3.fromRGB(22, 28, 28), M.Mud)
-	trackBed(parent)
-	telegraphPole(parent, 8, -22)
-	-- still water sheets
-	for _ = 1, 2 do
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		Forge.part({
-			parent = parent, name = "Water",
-			size = Vector3.new(rng:NextNumber(30, 70), 0.2, rng:NextNumber(28, 70)),
-			cf = CFrame.new(rng:NextNumber(15, 80), GROUND_Y + 0.18, side * rng:NextNumber(30, 120)),
-			color = Palette.MarshWater, material = M.Glass,
-			transparency = 0.12, reflectance = 0.42, cancollide = false, canquery = false,
-		})
-	end
-	for _ = 1, rng:NextInteger(3, 6) do
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		local x, z = rng:NextNumber(4, CHUNK - 4), side * rng:NextNumber(24, 110)
-		Forge.part({
-			parent = parent, name = "DeadTree",
-			size = Vector3.new(0.6, rng:NextNumber(7, 13), 0.6),
-			cf = CFrame.new(x, GROUND_Y + 5, z) * CFrame.Angles(rng:NextNumber(-0.1, 0.1), 0, rng:NextNumber(-0.15, 0.15)),
-			color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
-		})
-	end
-	-- fireflies
+local function fireflies(parent, x, z)
 	local anchor = Forge.part({
 		parent = parent, name = "FireflyAnchor",
 		size = Vector3.new(1, 1, 1),
-		cf = CFrame.new(CHUNK / 2, GROUND_Y + 5, -60),
+		cf = CFrame.new(x, GROUND_Y + 4, z),
 		transparency = 1, cancollide = false, canquery = false, castshadow = false,
 	})
 	Forge.particles(anchor, {
@@ -196,125 +349,354 @@ function Builders.marsh(parent, rng)
 	})
 end
 
+function Builders.marsh(parent, rng)
+	local t = GROUND_TRIPLETS.marsh
+	roadbed(parent, rng, t[1], t[2], t[3], t[4], { wetDitch = true })
+	telegraphPoleV2(parent, rng, 8, -1, 0.09)
+	telegraphPoleV2(parent, rng, 56, 1, 0.09)
+
+	-- still water sheets; drowned trees stand in them
+	local rects = {}
+	for _ = 1, 2 do
+		local w, d = rng:NextNumber(34, 72), rng:NextNumber(30, 72)
+		local x = rng:NextNumber(15, 80)
+		local side = rng:NextNumber() < 0.5 and -1 or 1
+		local z = side * rng:NextNumber(26, 110)
+		scen(parent, {
+			name = "Water", size = Vector3.new(w, 0.2, d),
+			cf = CFrame.new(x, GROUND_Y - 0.18, z),
+			color = Palette.MarshWater, material = M.Glass,
+			transparency = 0.10, reflectance = 0.55,
+		})
+		table.insert(rects, { x = x, z = z, w = w, d = d })
+	end
+
+	for _ = 1, 5 do
+		local x = rng:NextNumber(4, CHUNK - 4)
+		local side = rng:NextNumber() < 0.5 and -1 or 1
+		local z = side * rng:NextNumber(20, 110)
+		if rng:NextNumber() < 0.6 then
+			local r = rects[rng:NextInteger(1, #rects)]
+			x = r.x + rng:NextNumber(-r.w / 2 + 3, r.w / 2 - 3)
+			z = r.z + rng:NextNumber(-r.d / 2 + 3, r.d / 2 - 3)
+		end
+		local trunkH = rng:NextNumber(8, 14)
+		local lean = CFrame.Angles(rng:NextNumber(-0.12, 0.12), 0, rng:NextNumber(-0.18, 0.18))
+		local base = CFrame.new(x, GROUND_Y, z) * lean
+		scen(parent, {
+			name = "DeadTree", size = Vector3.new(0.7, trunkH, 0.7),
+			cf = base * CFrame.new(0, trunkH / 2, 0),
+			color = Palette.SnagWood, material = M.Wood,
+		})
+		for arm = 1, 2 do
+			scen(parent, {
+				name = "Branch", size = Vector3.new(0.35, rng:NextNumber(2.8, 4), 0.35),
+				cf = base * CFrame.new(0, trunkH * (arm == 1 and 0.62 or 0.78), 0)
+					* CFrame.Angles(0, rng:NextNumber(0, 3.14), math.rad(rng:NextNumber(50, 75))),
+				color = Palette.SnagWood, material = M.Wood,
+			})
+		end
+	end
+
+	for _ = 1, 3 do
+		local r = rects[rng:NextInteger(1, #rects)]
+		local rx = r.x + rng:NextNumber(-r.w / 2 - 4, r.w / 2 + 4)
+		local rz = r.z + (rng:NextNumber() < 0.5 and -1 or 1) * (r.d / 2 + rng:NextNumber(1, 4))
+		scen(parent, {
+			name = "Reeds", size = Vector3.new(2.6, 2.4, 0.3),
+			cf = CFrame.new(rx, GROUND_Y + 1.2, rz) * CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+			color = Palette.MarshReed, material = M.Grass,
+		})
+		scen(parent, {
+			name = "Reeds", size = Vector3.new(0.3, 2.4, 2.6),
+			cf = CFrame.new(rx, GROUND_Y + 1.2, rz) * CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+			color = Palette.MarshReed, material = M.Grass,
+		})
+	end
+
+	scen(parent, {
+		shape = "cyl", name = "SunkLog",
+		size = Vector3.new(rng:NextNumber(5, 8), 1.6, 1.6),
+		cf = CFrame.new(rng:NextNumber(10, 86), GROUND_Y + 0.2, (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(12, 40))
+			* CFrame.Angles(0, rng:NextNumber(0, 3.14), 0),
+		color = Palette.SnagWood, material = M.Wood,
+	})
+
+	for k = 1, 2 do
+		local r = rects[k]
+		mistCard(parent, rng, r.x, r.z, 1.3)
+	end
+	fogBank(parent, rng, rng:NextNumber(20, 76), (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(30, 60))
+	fireflies(parent, rects[1].x, rects[1].z)
+	fireflies(parent, rects[2].x, rects[2].z)
+
+	-- marsh horizons stay open on one side
+	treelineWall(parent, rng, rng:NextNumber() < 0.5 and -1 or 1, rng:NextNumber(62, 70))
+end
+
 function Builders.fields(parent, rng)
-	groundSlabs(parent, Color3.fromRGB(30, 32, 26), M.Grass)
-	trackBed(parent)
-	telegraphPole(parent, 8, -22)
-	-- fence lines
+	local t = GROUND_TRIPLETS.fields
+	roadbed(parent, rng, t[1], t[2], t[3], t[4])
+	telegraphPoleV2(parent, rng, 8, -1)
+	telegraphPoleV2(parent, rng, 56, 1)
+
+	-- crop windrows: parallel furrows racing past the glass
+	local rowSide = rng:NextNumber() < 0.5 and -1 or 1
+	for k, zBand in ipairs({ 15.5, 20.5, 25.5, 30.5 }) do
+		scen(parent, {
+			name = "CropRow", size = Vector3.new(96, 0.45, 1.6),
+			cf = CFrame.new(48, 5.62, rowSide * zBand),
+			color = k % 2 == 1 and Palette.CropRow or Palette.CropRowAlt, material = M.Grass,
+		})
+	end
+
+	-- fence runs on the second terrace
 	for _, side in ipairs({ -1, 1 }) do
 		if rng:NextNumber() < 0.8 then
-			local z = side * rng:NextNumber(24, 40)
-			for px = 6, CHUNK - 6, 12 do
-				Forge.part({
-					parent = parent, name = "FencePost",
-					size = Vector3.new(0.35, 2.4, 0.35),
-					cf = CFrame.new(px, GROUND_Y + 1.2, z),
-					color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
+			local z = side * rng:NextNumber(33, 40)
+			for px = 6, 90, 12 do
+				scen(parent, {
+					name = "FencePost", size = Vector3.new(0.35, 2.4, 0.35),
+					cf = CFrame.new(px, GROUND_Y + 0.9, z) * CFrame.Angles(0, 0, rng:NextNumber(-0.08, 0.08)),
+					color = Palette.SnagWood, material = M.Wood,
 				})
 			end
-			Forge.part({
-				parent = parent, name = "FenceRail",
-				size = Vector3.new(CHUNK, 0.25, 0.25),
-				cf = CFrame.new(CHUNK / 2, GROUND_Y + 2, z),
-				color = Palette.SnagWood, material = M.Wood, cancollide = false, canquery = false,
-			})
+			for _, railY in ipairs({ 6.8, 7.6 }) do
+				scen(parent, {
+					name = "FenceRail", size = Vector3.new(96, 0.22, 0.22),
+					cf = CFrame.new(48, railY, z),
+					color = Palette.SnagWood, material = M.Wood,
+				})
+			end
 		end
 	end
-	for _ = 1, rng:NextInteger(1, 3) do
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		Forge.ball({
-			parent = parent, name = "Hay",
-			size = Vector3.new(5, 3.4, 5),
-			cf = CFrame.new(rng:NextNumber(8, CHUNK - 8), GROUND_Y + 1.4, side * rng:NextNumber(30, 90)),
-			color = Color3.fromRGB(64, 58, 38), material = M.Grass, cancollide = false, canquery = false,
+
+	-- haystacks
+	for _ = 1, 3 do
+		local x = rng:NextNumber(8, 88)
+		local z = (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(44, 95)
+		scen(parent, {
+			shape = "cyl", name = "HayBase", size = Vector3.new(2.2, 6.4, 6.4),
+			cf = CFrame.new(x, GROUND_Y + 1.1, z) * CFrame.Angles(0, 0, math.rad(90)),
+			color = Palette.HayStraw, material = M.Grass,
+		})
+		scen(parent, {
+			shape = "ball", name = "HayTop", size = Vector3.new(5.6, 4.2, 5.6),
+			cf = CFrame.new(x, GROUND_Y + 3.4, z),
+			color = Palette.HayStraw, material = M.Grass,
 		})
 	end
-	if rng:NextNumber() < 0.16 then
-		-- distant farmhouse, one window lit for someone long gone
-		local z = (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(90, 150)
+
+	-- lone oak
+	do
+		local x = rng:NextNumber(8, 88)
+		local z = (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(46, 80)
+		scen(parent, {
+			name = "OakTrunk", size = Vector3.new(1.2, 7, 1.2),
+			cf = CFrame.new(x, GROUND_Y + 3.5, z),
+			color = Palette.PineTrunk, material = M.Wood,
+		})
+		local oakColor = Palette.PineDark:Lerp(Palette.PineMid, rng:NextNumber())
+		scen(parent, {
+			shape = "ball", name = "OakCanopy", size = Vector3.new(7, 5, 7),
+			cf = CFrame.new(x + 1.5, GROUND_Y + 8.2, z + 1.5),
+			color = oakColor, material = M.Grass,
+		})
+		scen(parent, {
+			shape = "ball", name = "OakCanopy", size = Vector3.new(5, 3.6, 5),
+			cf = CFrame.new(x - 1.5, GROUND_Y + 10.4, z - 1.5),
+			color = oakColor, material = M.Grass,
+		})
+	end
+
+	-- one hero silhouette per fields chunk, or nothing
+	local roll = rng:NextNumber()
+	local heroSide = rng:NextNumber() < 0.5 and -1 or 1
+	if roll < 0.30 then
+		-- windmill against the fog line
+		local x = rng:NextNumber(20, 76)
+		local z = heroSide * rng:NextNumber(120, 170)
+		scen(parent, { name = "MillTower", size = Vector3.new(3.4, 14, 3.4), cf = CFrame.new(x, GROUND_Y + 7, z), color = Palette.YardSteel, material = M.Metal })
+		scen(parent, { name = "MillTower2", size = Vector3.new(2.2, 10, 2.2), cf = CFrame.new(x, GROUND_Y + 19, z), color = Palette.YardSteel, material = M.Metal })
+		scen(parent, { shape = "ball", name = "MillHub", size = Vector3.new(1.6, 1.6, 1.6), cf = CFrame.new(x, GROUND_Y + 24.8, z - heroSide * 0.8), color = Palette.YardSteel, material = M.Metal })
+		local bladeOffset = rng:NextNumber(0, 1.57)
+		for b = 0, 3 do
+			scen(parent, {
+				name = "MillBlade", size = Vector3.new(0.5, 9, 1.6),
+				cf = CFrame.new(x, GROUND_Y + 24.8, z - heroSide * 1.0)
+					* CFrame.Angles(0, 0, bladeOffset + b * math.rad(90))
+					* CFrame.new(0, 4.5, 0),
+				color = Palette.SnagWood, material = M.Wood,
+			})
+		end
+	elseif roll < 0.55 then
+		-- barn + silo
+		local x = rng:NextNumber(20, 76)
+		local z = heroSide * rng:NextNumber(70, 110)
+		scen(parent, { name = "Barn", size = Vector3.new(18, 9, 12), cf = CFrame.new(x, GROUND_Y + 4.5, z), color = Color3.fromRGB(30, 18, 16), material = M.Wood })
+		for _, half in ipairs({ -1, 1 }) do
+			scen(parent, {
+				shape = "wedge", name = "BarnRoof", size = Vector3.new(18, 4.5, 6.2),
+				cf = CFrame.new(x, GROUND_Y + 11.25, z + half * 3.1)
+					* CFrame.Angles(0, half == 1 and math.rad(180) or 0, 0),
+				color = Color3.fromRGB(16, 16, 18), material = M.Slate,
+			})
+		end
+		scen(parent, { shape = "cyl", name = "Silo", size = Vector3.new(11, 7, 7), cf = CFrame.new(x + 12, GROUND_Y + 5.5, z) * CFrame.Angles(0, 0, math.rad(90)), color = Color3.fromRGB(44, 46, 48), material = M.Metal })
+		scen(parent, { shape = "ball", name = "SiloDome", size = Vector3.new(7, 3.5, 7), cf = CFrame.new(x + 12, GROUND_Y + 11.5, z), color = Color3.fromRGB(44, 46, 48), material = M.Metal })
+	elseif roll < 0.75 then
+		-- farmhouse, one window lit for someone long gone
 		local x = rng:NextNumber(15, 70)
-		Forge.part({
-			parent = parent, name = "House",
-			size = Vector3.new(14, 8, 10),
-			cf = CFrame.new(x, GROUND_Y + 4, z),
-			color = Color3.fromRGB(20, 20, 24), material = M.Wood, cancollide = false, canquery = false,
+		local z = heroSide * rng:NextNumber(90, 150)
+		scen(parent, { name = "House", size = Vector3.new(14, 8, 10), cf = CFrame.new(x, GROUND_Y + 4, z), color = Color3.fromRGB(20, 20, 24), material = M.Wood })
+		scen(parent, { shape = "wedge", name = "HouseRoof", size = Vector3.new(14, 4, 10), cf = CFrame.new(x, GROUND_Y + 10, z), color = Color3.fromRGB(16, 16, 18), material = M.Slate })
+		scen(parent, {
+			name = "WarmWindow", size = Vector3.new(0.2, 1.4, 1.1),
+			cf = CFrame.new(x - 7, GROUND_Y + 4.5, z),
+			color = Palette.WarmWindow, material = M.Neon,
 		})
-		Forge.wedge({
-			parent = parent, name = "HouseRoof",
-			size = Vector3.new(14, 4, 10),
-			cf = CFrame.new(x, GROUND_Y + 10, z),
-			color = Color3.fromRGB(16, 16, 18), material = M.Slate, cancollide = false, canquery = false,
-		})
-		if rng:NextNumber() < 0.5 then
-			Forge.part({
-				parent = parent, name = "WarmWindow",
-				size = Vector3.new(0.2, 1.4, 1.1),
-				cf = CFrame.new(x - 7, GROUND_Y + 4.5, z),
-				color = Color3.fromRGB(255, 190, 110), material = M.Neon,
-				cancollide = false, canquery = false, castshadow = false,
-			})
-		end
+	end
+
+	if rng:NextNumber() < 0.5 then
+		mistCard(parent, rng, rng:NextNumber(20, 76), rowSide * rng:NextNumber(16, 30), 1)
 	end
 end
 
 function Builders.yard(parent, rng)
-	groundSlabs(parent, Color3.fromRGB(34, 34, 36), M.Ground)
-	trackBed(parent)
-	-- dead siding with a wrecked boxcar
-	if rng:NextNumber() < 0.6 then
-		local z = -18
-		Forge.part({
-			parent = parent, name = "SidingRail",
-			size = Vector3.new(CHUNK, 0.3, 0.3),
-			cf = CFrame.new(CHUNK / 2, GROUND_Y + 0.4, z),
-			color = Color3.fromRGB(60, 58, 56), material = M.CorrodedMetal, cancollide = false, canquery = false,
+	local t = GROUND_TRIPLETS.yard
+	roadbed(parent, rng, t[1], t[2], t[3], t[4])
+
+	-- dead cold light masts, one of them still burning
+	for mastIndex, spec in ipairs({ { rng:NextNumber(10, 40), -1 }, { rng:NextNumber(56, 86), 1 } }) do
+		local mx, mside = spec[1], spec[2]
+		local mz = mside * rng:NextNumber(14, 20)
+		scen(parent, { name = "MastPole", size = Vector3.new(0.6, 16, 0.6), cf = CFrame.new(mx, GROUND_Y + 8, mz), color = Palette.YardSteel, material = M.Metal })
+		scen(parent, { name = "MastArm", size = Vector3.new(0.4, 0.4, 3.2), cf = CFrame.new(mx, GROUND_Y + 15.6, mz - mside * 1.6), color = Palette.YardSteel, material = M.Metal })
+		local head = scen(parent, {
+			name = "MastHead", size = Vector3.new(1.1, 0.5, 1.1),
+			cf = CFrame.new(mx, GROUND_Y + 15.2, mz - mside * 3.0),
+			color = Color3.fromRGB(150, 170, 190), material = M.Neon,
 		})
-		if rng:NextNumber() < 0.55 then
-			local bx = rng:NextNumber(20, 70)
-			Forge.part({
-				parent = parent, name = "DeadCar",
-				size = Vector3.new(26, 9, 9),
-				cf = CFrame.new(bx, GROUND_Y + 4.8, z) * CFrame.Angles(0, 0, rng:NextNumber(-0.06, 0.02)),
-				color = Color3.fromRGB(26, 22, 22), material = M.CorrodedMetal, cancollide = false, canquery = false,
-			})
+		if mastIndex == 1 then
+			Forge.light(head, { kind = "spot", color = Color3.fromRGB(150, 170, 190), brightness = 0.8, range = 40, angle = 70, face = Enum.NormalId.Bottom, shadows = false })
 		end
 	end
-	-- sleeper stacks and drums
-	for _ = 1, rng:NextInteger(2, 4) do
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		Forge.part({
-			parent = parent, name = "TieStack",
-			size = Vector3.new(8, rng:NextNumber(2, 4), 4),
-			cf = CFrame.new(rng:NextNumber(8, CHUNK - 8), GROUND_Y + 1.6, side * rng:NextNumber(24, 60)),
-			color = Palette.SleeperWood, material = M.Wood, cancollide = false, canquery = false,
+
+	-- dead sidings
+	for _, z in ipairs({ -18, -26 }) do
+		scen(parent, {
+			name = "SidingRail", size = Vector3.new(96, 0.3, 0.3),
+			cf = CFrame.new(48, 6.0, z),
+			color = Color3.fromRGB(60, 58, 56), material = M.CorrodedMetal,
 		})
 	end
-	-- signal post with a patient red eye
-	if rng:NextNumber() < 0.5 then
-		local x = rng:NextNumber(10, CHUNK - 10)
-		Forge.part({
-			parent = parent, name = "SignalPost",
-			size = Vector3.new(0.5, 11, 0.5),
-			cf = CFrame.new(x, GROUND_Y + 5.5, 14),
-			color = Color3.fromRGB(40, 42, 44), material = M.Metal, cancollide = false, canquery = false,
+	if rng:NextNumber() < 0.55 then
+		local bx = rng:NextNumber(20, 70)
+		local lean = rng:NextNumber(-0.06, 0.02)
+		scen(parent, { name = "DeadCar", size = Vector3.new(26, 9, 9), cf = CFrame.new(bx, GROUND_Y + 4.5, -18) * CFrame.Angles(0, 0, lean), color = Color3.fromRGB(26, 22, 22), material = M.CorrodedMetal })
+		scen(parent, { shape = "wedge", name = "DeadCarRoof", size = Vector3.new(26, 2, 9), cf = CFrame.new(bx, GROUND_Y + 10, -18) * CFrame.Angles(0, 0, lean), color = Color3.fromRGB(18, 18, 20), material = M.Slate })
+		for _, ax in ipairs({ bx - 9, bx + 9 }) do
+			scen(parent, { name = "DeadAxle", size = Vector3.new(2.5, 1.6, 8), cf = CFrame.new(ax, GROUND_Y + 0.8, -18), color = Color3.fromRGB(14, 14, 16), material = M.Metal })
+		end
+	end
+
+	-- container stacks opposite the siding
+	local containerColors = { Palette.ContainerRust, Palette.ContainerBlue, Palette.ContainerOlive }
+	for _, sx in ipairs({ rng:NextNumber(8, 34), rng:NextNumber(54, 84) }) do
+		local sz = rng:NextNumber(24, 60)
+		local baseY = GROUND_Y + 4.2
+		scen(parent, { name = "Container", size = Vector3.new(24, 8.4, 8), cf = CFrame.new(sx, baseY, sz), color = containerColors[rng:NextInteger(1, 3)], material = M.CorrodedMetal })
+		scen(parent, {
+			name = "Container", size = Vector3.new(24, 8.4, 8),
+			cf = CFrame.new(sx + rng:NextNumber(-2, 2), baseY + 8.4, sz + rng:NextNumber(-0.6, 0.6)) * CFrame.Angles(0, rng:NextNumber(-0.05, 0.05), 0),
+			color = containerColors[rng:NextInteger(1, 3)], material = M.CorrodedMetal,
 		})
-		Forge.part({
-			parent = parent, name = "SignalEye",
-			size = Vector3.new(0.5, 0.5, 0.3),
-			cf = CFrame.new(x, GROUND_Y + 10.4, 14),
-			color = Palette.EmergencyRed, material = M.Neon,
-			cancollide = false, canquery = false, castshadow = false,
+		if rng:NextNumber() < 0.5 then
+			scen(parent, { name = "Container", size = Vector3.new(24, 8.4, 8), cf = CFrame.new(sx + rng:NextNumber(-2, 2), baseY + 16.8, sz) * CFrame.Angles(0, rng:NextNumber(-0.05, 0.05), 0), color = containerColors[rng:NextInteger(1, 3)], material = M.CorrodedMetal })
+		else
+			scen(parent, { name = "Container", size = Vector3.new(24, 8.4, 8), cf = CFrame.new(sx + rng:NextNumber(-4, 4), baseY, sz + 9) * CFrame.Angles(0, rng:NextNumber(-0.05, 0.05), 0), color = containerColors[rng:NextInteger(1, 3)], material = M.CorrodedMetal })
+		end
+	end
+
+	-- drums, tie stacks, slag
+	local drumColors = { Color3.fromRGB(40, 20, 18), Color3.fromRGB(24, 34, 48), Color3.fromRGB(40, 42, 44) }
+	local drumX, drumZ = rng:NextNumber(12, 80), rng:NextNumber(26, 50)
+	for d = 1, 3 do
+		scen(parent, {
+			shape = "cyl", name = "Drum", size = Vector3.new(1.8, 1.4, 1.4),
+			cf = CFrame.new(drumX + d * 1.5, GROUND_Y + 0.9, drumZ + (d % 2)) * CFrame.Angles(0, 0, math.rad(90)),
+			color = drumColors[d], material = M.CorrodedMetal,
 		})
 	end
-	-- warehouse silhouettes
-	if rng:NextNumber() < 0.4 then
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		Forge.part({
-			parent = parent, name = "Warehouse",
-			size = Vector3.new(40, 16, 18),
-			cf = CFrame.new(CHUNK / 2, GROUND_Y + 8, side * rng:NextNumber(70, 130)),
-			color = Color3.fromRGB(18, 18, 22), material = M.Concrete, cancollide = false, canquery = false,
+	for _ = 1, 2 do
+		scen(parent, {
+			name = "TieStack", size = Vector3.new(8, rng:NextNumber(2, 4), 4),
+			cf = CFrame.new(rng:NextNumber(8, 88), GROUND_Y + 1.6, (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(24, 60)),
+			color = Palette.SleeperWood, material = M.Wood,
 		})
+	end
+	rock(parent, rng, rng:NextNumber(8, 88), rng:NextNumber(12, 40), Color3.fromRGB(30, 30, 33))
+	rock(parent, rng, rng:NextNumber(8, 88), -rng:NextNumber(12, 40), Color3.fromRGB(30, 30, 33))
+
+	-- two hero silhouettes per yard chunk, drawn without replacement
+	local heroes = { "gantry", "signalbridge", "smokestack", "warehouse" }
+	local firstPick = rng:NextInteger(1, 4)
+	local secondPick = rng:NextInteger(1, 3)
+	if secondPick >= firstPick then
+		secondPick += 1
+	end
+	for _, pick in ipairs({ heroes[firstPick], heroes[secondPick] }) do
+		if pick == "gantry" then
+			local gx = rng:NextNumber(24, 72)
+			for _, gz in ipairs({ -34, -58 }) do
+				scen(parent, { name = "GantryLeg", size = Vector3.new(2, 22, 2), cf = CFrame.new(gx, GROUND_Y + 11, gz), color = Palette.YardSteel, material = M.CorrodedMetal })
+			end
+			scen(parent, { name = "GantryBeam", size = Vector3.new(2.5, 2.5, 28), cf = CFrame.new(gx, GROUND_Y + 22, -46), color = Palette.YardSteel, material = M.CorrodedMetal })
+			local tz = rng:NextNumber(-52, -40)
+			scen(parent, { name = "GantryTrolley", size = Vector3.new(3, 2, 3), cf = CFrame.new(gx, GROUND_Y + 19.8, tz), color = Palette.YardSteel, material = M.CorrodedMetal })
+			local cableLen = rng:NextNumber(4, 7)
+			scen(parent, { name = "GantryCable", size = Vector3.new(0.3, cableLen, 0.3), cf = CFrame.new(gx, GROUND_Y + 18.8 - cableLen / 2, tz), color = Palette.YardSteel, material = M.Metal })
+			scen(parent, { name = "GantryHook", size = Vector3.new(1.5, 1.5, 1.5), cf = CFrame.new(gx, GROUND_Y + 18 - cableLen, tz), color = Palette.YardSteel, material = M.CorrodedMetal })
+		elseif pick == "signalbridge" then
+			local bx = rng:NextNumber(20, 80)
+			for _, bz in ipairs({ -11, 11 }) do
+				local truss = Forge.truss({
+					parent = parent, name = "BridgeTruss",
+					size = Vector3.new(2, 22, 2),
+					cf = CFrame.new(bx, GROUND_Y + 11, bz),
+					color = Palette.YardSteel, material = M.Metal,
+					cancollide = false, canquery = false,
+				})
+				truss.CastShadow = false
+			end
+			scen(parent, { name = "BridgeBeam", size = Vector3.new(1.5, 1.5, 24.5), cf = CFrame.new(bx, GROUND_Y + 21.4, 0), color = Palette.YardSteel, material = M.Metal })
+			for _, hz in ipairs({ -3, 0, 3 }) do
+				scen(parent, { name = "SignalHood", size = Vector3.new(1.1, 1.4, 0.9), cf = CFrame.new(bx, GROUND_Y + 20, hz), color = Palette.YardSteel, material = M.Metal })
+				scen(parent, {
+					name = "SignalLens", size = Vector3.new(0.15, 0.45, 0.45),
+					cf = CFrame.new(bx - 0.6, GROUND_Y + 20, hz),
+					color = rng:NextNumber() < 0.7 and Palette.SignalAmber or Palette.EmergencyRed,
+					material = M.Neon,
+				})
+			end
+		elseif pick == "smokestack" then
+			local kx = rng:NextNumber(16, 80)
+			local kz = (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(130, 170)
+			scen(parent, { shape = "cyl", name = "Stack", size = Vector3.new(44, 7, 7), cf = CFrame.new(kx, GROUND_Y + 22, kz) * CFrame.Angles(0, 0, math.rad(90)), color = Color3.fromRGB(36, 26, 24), material = M.Brick })
+			scen(parent, { shape = "cyl", name = "StackCap", size = Vector3.new(1.5, 8.5, 8.5), cf = CFrame.new(kx, GROUND_Y + 44.5, kz) * CFrame.Angles(0, 0, math.rad(90)), color = Color3.fromRGB(20, 20, 22), material = M.Metal })
+			if rng:NextNumber() < 0.4 then
+				scen(parent, { name = "StackBeacon", size = Vector3.new(0.6, 0.6, 0.6), cf = CFrame.new(kx + 3.5, GROUND_Y + 45.5, kz), color = Palette.EmergencyRed, material = M.Neon })
+			end
+		else
+			local wz = (rng:NextNumber() < 0.5 and -1 or 1) * rng:NextNumber(80, 130)
+			scen(parent, { name = "Warehouse", size = Vector3.new(40, 16, 18), cf = CFrame.new(48, GROUND_Y + 8, wz), color = Color3.fromRGB(18, 18, 22), material = M.Concrete })
+			scen(parent, { shape = "wedge", name = "WarehouseRoof", size = Vector3.new(40, 5, 18), cf = CFrame.new(48, GROUND_Y + 18.5, wz), color = Color3.fromRGB(14, 14, 17), material = M.Slate })
+			scen(parent, {
+				name = "GrimGlow", size = Vector3.new(30, 1.2, 0.3),
+				cf = CFrame.new(48, GROUND_Y + 13, wz - math.sign(wz) * 9.2),
+				color = Color3.fromRGB(60, 52, 40), material = M.Neon, transparency = 0.35,
+			})
+		end
 	end
 end
 
@@ -348,7 +730,7 @@ function Builders.gorge(parent, rng)
 		size = Vector3.new(CHUNK, 0.3, 400),
 		cf = CFrame.new(CHUNK / 2, GROUND_Y - 92, 0),
 		color = Color3.fromRGB(10, 14, 20), material = M.Glass,
-		transparency = 0.05, reflectance = 0.5, cancollide = false, canquery = false,
+		transparency = 0.05, reflectance = 0.65, cancollide = false, canquery = false,
 	})
 	-- side guard beams
 	for _, z in ipairs({ -5.2, 5.2 }) do
@@ -466,26 +848,73 @@ local function buildChunk(i)
 	return chunks[i]
 end
 
+-- Two depth bands of overlapping ridges + horizon aprons: a continuous
+-- rolling skyline instead of lonely teeth, melting into the fog.
 local function buildFarChunk(i)
 	local model = Instance.new("Model")
 	model.Name = "Far_" .. i
 	model.WorldPivot = CFrame.new()
 	local rng = Random.new(seed * 29 + i * 977)
+
 	for _, side in ipairs({ -1, 1 }) do
-		local count = rng:NextInteger(2, 3)
-		for k = 1, count do
-			local w = rng:NextNumber(120, 260)
-			local h = rng:NextNumber(60, 150)
-			Forge.wedge({
-				parent = model, name = "Ridge",
-				size = Vector3.new(w, h, rng:NextNumber(40, 80)),
-				cf = CFrame.new(rng:NextNumber(0, FAR_PITCH), GROUND_Y + h / 2 - 4, side * (Config.Scenery.FarLayerZ + rng:NextNumber(-40, 90)))
+		-- Band A: near ridge, slate, slight per-part value jitter
+		for _, slot in ipairs({ 32, 192, 352 }) do
+			local w = rng:NextNumber(200, 260)
+			local h = rng:NextNumber(55, 95)
+			scen(model, {
+				shape = "wedge", name = "RidgeA",
+				size = Vector3.new(w, h, rng:NextNumber(50, 70)),
+				cf = CFrame.new(slot + rng:NextNumber(-28, 28), (GROUND_Y - 6) + h / 2, side * (232 + rng:NextNumber(0, 18)))
 					* CFrame.Angles(0, rng:NextNumber() < 0.5 and math.rad(180) or 0, 0),
-				color = Palette.MountainFar, material = M.Slate, cancollide = false, canquery = false, castshadow = false,
+				color = jitterColor(rng, Palette.RidgeNear, 3), material = M.Slate,
 			})
-			local _ = k
 		end
+		local dA = rng:NextNumber(200, 260)
+		scen(model, {
+			shape = "ball", name = "HillA",
+			size = Vector3.new(dA, 0.6 * dA, dA),
+			cf = CFrame.new(rng:NextNumber(60, 324), GROUND_Y - 0.02 * dA, side * (238 + rng:NextNumber(0, 14))),
+			color = Palette.RidgeNear, material = M.Slate,
+		})
+
+		-- Band B: far ridge, dead flat, one step from vanishing
+		for _, slot in ipairs({ 96, 288 }) do
+			local w = rng:NextNumber(260, 340)
+			local h = rng:NextNumber(95, 150)
+			scen(model, {
+				shape = "wedge", name = "RidgeB",
+				size = Vector3.new(w, h, rng:NextNumber(60, 90)),
+				cf = CFrame.new(slot + rng:NextNumber(-40, 40), (GROUND_Y - 8) + h / 2, side * (348 + rng:NextNumber(0, 24)))
+					* CFrame.Angles(0, rng:NextNumber() < 0.5 and math.rad(180) or 0, 0),
+				color = Palette.RidgeFar, material = M.Smooth,
+			})
+		end
+		local dB = rng:NextNumber(300, 380)
+		scen(model, {
+			shape = "ball", name = "HillB",
+			size = Vector3.new(dB, 0.55 * dB, dB),
+			cf = CFrame.new(rng:NextNumber(40, 344), GROUND_Y, side * (352 + rng:NextNumber(0, 20))),
+			color = Palette.RidgeFar, material = M.Smooth,
+		})
+
+		-- horizon apron: no void ever peeks between ridge bases
+		scen(model, {
+			name = "Apron", size = Vector3.new(384, 1, 300),
+			cf = CFrame.new(192, 4.1, side * 360),
+			color = Palette.HorizonApron, material = M.Smooth,
+		})
 	end
+
+	-- somebody lives out there
+	if rng:NextNumber() < 0.12 then
+		local side = rng:NextNumber() < 0.5 and -1 or 1
+		scen(model, {
+			name = "FarWindow", size = Vector3.new(1.2, 1.2, 0.4),
+			cf = CFrame.new(rng:NextNumber(60, 324), GROUND_Y + rng:NextNumber(25, 45), side * 236),
+			color = Palette.WarmWindow, material = M.Neon,
+		})
+	end
+
 	model.Parent = farFolder
 	farChunks[i] = { model = model }
 	return farChunks[i]
@@ -535,9 +964,29 @@ local function updateChunks()
 		end
 	end
 
-	-- the moon stands still no matter how far you run
+	-- the moon stands still no matter how far you run, rising behind the ridges
 	if moon then
-		moon.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(240, 210, -520))
+		local moonCF = CFrame.new(cam.CFrame.Position + Vector3.new(300, 190, -560))
+		moon.CFrame = moonCF
+		if moonHaloInner then
+			moonHaloInner.CFrame = moonCF
+		end
+		if moonHaloOuter then
+			moonHaloOuter.CFrame = moonCF
+		end
+	end
+
+	-- as the land changes, so does the air
+	local biomeKind
+	local feature = RunPlan.featureAt(seed, sCenter)
+	if feature and feature.kind == "gorge" then
+		biomeKind = "gorge"
+	elseif not feature then
+		biomeKind = RunPlan.biomeAt(seed, sCenter)
+	end
+	if biomeKind and biomeKind ~= lastBiomeSent then
+		lastBiomeSent = biomeKind
+		LightingDirector.setBiome(biomeKind)
 	end
 
 	-- set pieces pinned to the track (the terminus at dawn)
@@ -871,16 +1320,26 @@ function SceneryController.start()
 
 	moon = Forge.ball({
 		parent = root, name = "Moon",
-		size = Vector3.new(34, 34, 34),
+		size = Vector3.new(46, 46, 46),
 		cf = CFrame.new(0, 300, -600),
 		color = Palette.Moon, material = M.Neon,
 		cancollide = false, canquery = false, castshadow = false,
 	})
-	local halo = Instance.new("PointLight")
-	halo.Color = Palette.Moonlight
-	halo.Brightness = 0.3
-	halo.Range = 60
-	halo.Parent = moon
+	-- glow is geometry, not a dead-at-range PointLight: two nested halos
+	moonHaloInner = Forge.ball({
+		parent = root, name = "MoonHaloInner",
+		size = Vector3.new(66, 66, 66),
+		cf = moon.CFrame,
+		color = Palette.MoonHaloInner, material = M.Neon,
+		transparency = 0.72, cancollide = false, canquery = false, castshadow = false,
+	})
+	moonHaloOuter = Forge.ball({
+		parent = root, name = "MoonHaloOuter",
+		size = Vector3.new(100, 100, 100),
+		cf = moon.CFrame,
+		color = Palette.MoonHaloOuter, material = M.Neon,
+		transparency = 0.90, cancollide = false, canquery = false, castshadow = false,
+	})
 
 	seed = workspace:GetAttribute("RunSeed") or 1
 	workspace:GetAttributeChangedSignal("RunSeed"):Connect(function()

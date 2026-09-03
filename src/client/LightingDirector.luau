@@ -1,11 +1,11 @@
 --[[
 	LightingDirector.luau
 	The film grade. Roblox has no custom shader pipeline, so the look is
-	built from everything it does expose, pushed hard: Future lighting
-	(set in the place file), a tuned Atmosphere, layered ColorCorrection,
-	Bloom, DepthOfField, dynamic Clouds, gaslight flicker, swinging lamp
-	fixtures, tunnel blackouts with emergency strips, and a real dawn
-	when you win.
+	built from everything it does expose, pushed hard: Future lighting with
+	a true-darkness ambient floor and environment specular (brass glints,
+	rail shine), a per-mode Atmosphere/CC/Bloom/DoF stack, per-biome fog
+	shifts, gaslight flicker, swinging fixtures, tunnel blackouts with
+	emergency strips, and a real dawn when you win.
 ]]
 
 local Lighting = game:GetService("Lighting")
@@ -27,21 +27,57 @@ local atmosphere, bloom, gradeCC, pulseCC, dof, clouds
 
 local BASE = {
 	density = 0.34,
-	offset = 0.28,
-	atmoColor = Color3.fromRGB(24, 30, 52),
-	decay = Color3.fromRGB(14, 16, 30),
-	glare = 0.12,
-	haze = 1.7,
-	contrast = 0.07,
-	saturation = -0.12,
-	tint = Color3.fromRGB(216, 224, 248),
-	brightness = 0.015,
+	offset = 0.42,
+	atmoColor = Color3.fromRGB(22, 29, 50),
+	decay = Color3.fromRGB(11, 13, 26),
+	glare = 0.14,
+	haze = 1.8,
+	contrast = 0.10,
+	saturation = -0.10,
+	tint = Color3.fromRGB(206, 216, 246),
+	brightness = 0,
+	outdoorAmbient = Color3.fromRGB(17, 23, 40),
 }
 
 local mode = "exterior" -- exterior | interior | tunnel | dawn | defeat
+local currentBiome = "pine"
+
+local function biomeAtmo()
+	local fog = Palette.BiomeFog[currentBiome] or BASE.atmoColor
+	local density, haze, glare = BASE.density, BASE.haze, BASE.glare
+	local decay = BASE.decay
+	if currentBiome == "marsh" then
+		density += 0.06
+		haze += 0.5
+	elseif currentBiome == "fields" then
+		density -= 0.04
+		haze -= 0.2
+	elseif currentBiome == "yard" then
+		density += 0.03
+		haze += 0.3
+		decay = Color3.fromRGB(20, 16, 24)
+	elseif currentBiome == "gorge" then
+		density -= 0.08
+		haze -= 0.4
+		glare += 0.08
+	end
+	return fog, density, haze, glare, decay
+end
 
 local function buildEffects()
 	Lighting:ClearAllChildren()
+
+	-- service baseline: the reason night reads cinematic instead of muddy
+	Lighting.Brightness = 1.4
+	Lighting.ClockTime = 1.5 -- the moon rakes in at an angle, not from zenith
+	Lighting.GeographicLatitude = 41
+	Lighting.ExposureCompensation = 0.1
+	Lighting.Ambient = Color3.fromRGB(7, 8, 12)          -- true darkness floor
+	Lighting.OutdoorAmbient = BASE.outdoorAmbient        -- cold moonlit fill
+	Lighting.ColorShift_Top = Color3.fromRGB(112, 132, 188)
+	Lighting.EnvironmentDiffuseScale = 0.18
+	Lighting.EnvironmentSpecularScale = 0.5              -- metal/brass/glass glint
+	Lighting.ShadowSoftness = 0.15
 
 	-- our moon hangs low over the valley; hide the sky's own, keep its stars
 	local sky = Instance.new("Sky")
@@ -60,9 +96,9 @@ local function buildEffects()
 	atmosphere.Parent = Lighting
 
 	bloom = Instance.new("BloomEffect")
-	bloom.Intensity = 0.38
-	bloom.Size = 24
-	bloom.Threshold = 1.08
+	bloom.Intensity = 0.5
+	bloom.Size = 40
+	bloom.Threshold = 1.4 -- hugs Neon and speculars; no frame-wide haze
 	bloom.Parent = Lighting
 
 	gradeCC = Instance.new("ColorCorrectionEffect")
@@ -78,18 +114,18 @@ local function buildEffects()
 	pulseCC.Parent = Lighting
 
 	dof = Instance.new("DepthOfFieldEffect")
-	dof.FarIntensity = 0.18
-	dof.FocusDistance = 42
-	dof.InFocusRadius = 34
-	dof.NearIntensity = 0.32
+	dof.FarIntensity = 0.25
+	dof.FocusDistance = 55
+	dof.InFocusRadius = 40
+	dof.NearIntensity = 0.12
 	dof.Parent = Lighting
 
 	local terrain = workspace:FindFirstChildOfClass("Terrain")
 	if terrain then
 		clouds = terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
-		clouds.Cover = 0.68
-		clouds.Density = 0.24
-		clouds.Color = Color3.fromRGB(120, 128, 150)
+		clouds.Cover = 0.52
+		clouds.Density = 0.32
+		clouds.Color = Color3.fromRGB(44, 52, 78)
 		clouds.Parent = terrain
 	end
 end
@@ -105,31 +141,57 @@ local function tweenGrade(props, seconds)
 	TweenService:Create(gradeCC, TweenInfo.new(seconds or 1.2, Enum.EasingStyle.Sine), props):Play()
 end
 
+local function tweenDoF(props, seconds)
+	TweenService:Create(dof, TweenInfo.new(seconds or 1.2, Enum.EasingStyle.Sine), props):Play()
+end
+
+local function tweenBloom(props, seconds)
+	TweenService:Create(bloom, TweenInfo.new(seconds or 1.2, Enum.EasingStyle.Sine), props):Play()
+end
+
+local function tweenOutdoor(color, seconds)
+	TweenService:Create(Lighting, TweenInfo.new(seconds or 1.2, Enum.EasingStyle.Sine), { OutdoorAmbient = color }):Play()
+end
+
 local function applyMode(next)
 	if mode == next then
 		return
 	end
-	local from = mode
 	mode = next
+	local fog, density, haze, glare, decay = biomeAtmo()
+
 	if next == "tunnel" then
-		tweenAtmo({ Density = 0.58, Color = Color3.fromRGB(8, 8, 12), Decay = Color3.fromRGB(4, 4, 8), Haze = 2.6, Glare = 0 }, 1.4)
-		tweenGrade({ Contrast = 0.12, Saturation = -0.3, TintColor = Color3.fromRGB(200, 202, 218), Brightness = -0.03 }, 1.4)
+		tweenAtmo({ Density = 0.60, Offset = 0.10, Color = Color3.fromRGB(7, 7, 10), Decay = Color3.fromRGB(3, 3, 6), Haze = 2.8, Glare = 0 }, 1.4)
+		tweenGrade({ Contrast = 0.16, Saturation = -0.35, TintColor = Color3.fromRGB(196, 200, 216), Brightness = -0.05 }, 1.4)
+		tweenBloom({ Intensity = 0.65, Threshold = 1.15 }, 1.4)
+		tweenDoF({ FarIntensity = 0.35, FocusDistance = 30, InFocusRadius = 20, NearIntensity = 0.10 }, 1.4)
+		tweenOutdoor(Color3.fromRGB(6, 6, 10), 1.4)
 	elseif next == "interior" then
-		tweenAtmo({ Density = BASE.density - 0.03, Color = BASE.atmoColor, Decay = BASE.decay, Haze = BASE.haze, Glare = BASE.glare }, 1.2)
-		tweenGrade({ Contrast = BASE.contrast + 0.02, Saturation = BASE.saturation + 0.04, TintColor = Color3.fromRGB(236, 226, 214), Brightness = BASE.brightness }, 1.2)
+		tweenAtmo({ Density = density - 0.04, Offset = 0.34, Color = fog, Decay = decay, Haze = haze - 0.2, Glare = 0.12 }, 1.2)
+		tweenGrade({ Contrast = 0.10, Saturation = 0, TintColor = Color3.fromRGB(240, 228, 212), Brightness = 0.01 }, 1.2)
+		tweenBloom({ Intensity = 0.5, Threshold = 1.4 }, 1.2)
+		tweenDoF({ FarIntensity = 0.12, FocusDistance = 26, InFocusRadius = 22, NearIntensity = 0.08 }, 1.2)
+		tweenOutdoor(BASE.outdoorAmbient, 1.2)
 	elseif next == "exterior" then
-		tweenAtmo({ Density = BASE.density + 0.04, Color = BASE.atmoColor, Decay = BASE.decay, Haze = BASE.haze + 0.3, Glare = BASE.glare }, 1.2)
+		tweenAtmo({ Density = density + 0.06, Offset = 0.50, Color = fog, Decay = decay, Haze = haze + 0.2, Glare = glare + 0.04 }, 1.2)
 		tweenGrade({ Contrast = BASE.contrast, Saturation = BASE.saturation, TintColor = BASE.tint, Brightness = BASE.brightness }, 1.2)
+		tweenBloom({ Intensity = 0.5, Threshold = 1.4 }, 1.2)
+		tweenDoF({ FarIntensity = 0.25, FocusDistance = 55, InFocusRadius = 40, NearIntensity = 0.12 }, 1.2)
+		tweenOutdoor(BASE.outdoorAmbient, 1.2)
 	elseif next == "dawn" then
-		TweenService:Create(Lighting, TweenInfo.new(22, Enum.EasingStyle.Sine), { ClockTime = 6.6, ExposureCompensation = 0.35 }):Play()
-		tweenAtmo({ Density = 0.26, Color = Color3.fromRGB(255, 170, 130), Decay = Color3.fromRGB(120, 80, 90), Glare = 0.35, Haze = 2.2 }, 20)
-		tweenGrade({ Contrast = 0.05, Saturation = 0.06, TintColor = Color3.fromRGB(255, 236, 220), Brightness = 0.02 }, 20)
-		TweenService:Create(bloom, TweenInfo.new(20), { Intensity = 0.55 }):Play()
+		TweenService:Create(Lighting, TweenInfo.new(22, Enum.EasingStyle.Sine), {
+			ClockTime = 6.6, ExposureCompensation = 0.5,
+			OutdoorAmbient = Color3.fromRGB(72, 58, 62),
+			ColorShift_Top = Color3.fromRGB(255, 196, 150),
+		}):Play()
+		tweenAtmo({ Density = 0.22, Offset = 0.60, Color = Color3.fromRGB(255, 158, 112), Decay = Color3.fromRGB(98, 72, 110), Glare = 0.42, Haze = 2.1 }, 20)
+		tweenGrade({ Contrast = 0.04, Saturation = 0.08, TintColor = Color3.fromRGB(255, 238, 220), Brightness = 0.03 }, 20)
+		tweenBloom({ Intensity = 0.8, Size = 56, Threshold = 0.9 }, 20)
+		tweenDoF({ FarIntensity = 0.08, FocusDistance = 80, InFocusRadius = 70, NearIntensity = 0.05 }, 20)
 	elseif next == "defeat" then
-		tweenGrade({ Contrast = 0.18, Saturation = -0.65, TintColor = Color3.fromRGB(190, 196, 210), Brightness = -0.04 }, 2.5)
-		tweenAtmo({ Density = 0.5, Haze = 2.8 }, 2.5)
+		tweenGrade({ Contrast = 0.20, Saturation = -0.70, TintColor = Color3.fromRGB(188, 194, 208), Brightness = -0.05 }, 2.5)
+		tweenAtmo({ Density = 0.52, Haze = 2.9, Color = Color3.fromRGB(26, 30, 40) }, 2.5)
 	end
-	return from
 end
 
 local function refreshContextMode()
@@ -145,6 +207,25 @@ local function refreshContextMode()
 	end
 end
 
+-- Biome fog shifts: called by SceneryController as the land changes
+function LightingDirector.setBiome(kind)
+	if kind == currentBiome or not Palette.BiomeFog[kind] then
+		return
+	end
+	currentBiome = kind
+	if mode == "exterior" or mode == "interior" then
+		local fog, density, haze, glare, decay = biomeAtmo()
+		local outside = mode == "exterior"
+		tweenAtmo({
+			Color = fog,
+			Density = outside and density + 0.06 or density - 0.04,
+			Haze = outside and haze + 0.2 or haze - 0.2,
+			Glare = glare,
+			Decay = decay,
+		}, 4)
+	end
+end
+
 ----------------------------------------------------------------
 -- Emergency strips (tunnels)
 ----------------------------------------------------------------
@@ -152,7 +233,7 @@ local function setStrips(on)
 	for _, strip in ipairs(CollectionService:GetTagged(Tags.EmergencyStrip)) do
 		if strip:IsA("BasePart") then
 			strip.Material = on and Enum.Material.Neon or Enum.Material.Glass
-			strip.Transparency = on and 0.05 or 0.5
+			strip.Transparency = on and 0 or 0.5
 		end
 	end
 end
@@ -210,9 +291,8 @@ local function flickerStep(now)
 end
 
 ----------------------------------------------------------------
--- Pulses
+-- Pulses + scare hooks
 ----------------------------------------------------------------
--- Exposed hooks for the ambient scare system
 function LightingDirector.stormFor(seconds)
 	furnaceFlickerUntil = math.max(furnaceFlickerUntil, os.clock() + (seconds or 1.2))
 end
@@ -256,7 +336,7 @@ local function healthLoop()
 			if hurt > 0.55 then
 				local target = -0.35 * (hurt - 0.55) / 0.45
 				TweenService:Create(gradeCC, TweenInfo.new(0.6), {
-					Saturation = (mode == "interior" and BASE.saturation + 0.04 or BASE.saturation) + target,
+					Saturation = (mode == "interior" and 0 or BASE.saturation) + target,
 				}):Play()
 			end
 		end
@@ -293,8 +373,10 @@ function LightingDirector.start()
 			applyMode("defeat")
 		elseif state == "Lobby" or state == "Journey" then
 			-- fresh night
-			Lighting.ClockTime = 0.05
-			Lighting.ExposureCompensation = 0.15
+			Lighting.ClockTime = 1.5
+			Lighting.ExposureCompensation = 0.1
+			Lighting.ColorShift_Top = Color3.fromRGB(112, 132, 188)
+			Lighting.OutdoorAmbient = BASE.outdoorAmbient
 			mode = "none"
 			refreshContextMode()
 		end

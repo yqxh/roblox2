@@ -288,7 +288,7 @@ local function buildLobby()
 			color = Palette.LampGlass, material = M.Neon,
 		})
 		head.Name = "LampHead"
-		Forge.light(head, { color = Palette.LampGlow, range = 17, brightness = 0.9, flicker = true, shadows = true })
+		Forge.light(head, { color = Palette.LampGlow, range = 13, brightness = 1.5, flicker = true, shadows = true })
 		post.Name = "LampPost"
 	end
 
