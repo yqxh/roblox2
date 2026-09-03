@@ -213,12 +213,13 @@ function DoorSystem.buildBoundary(i, entryThis, entryNext)
 			color = Color3.fromRGB(24, 24, 26), material = M.Fabric,
 			cancollide = false, canquery = false,
 		})
-		-- diaphragm striker plates at the bellows shoulders
+		-- diaphragm striker plates at the bellows shoulders, riding the -X
+		-- door frame: clear of the doorway, and of the door's +X open pocket
 		for _, side in ipairs({ -1, 1 }) do
 			Forge.part({
 				parent = model, name = "Diaphragm",
 				size = Vector3.new(0.25, 7.8, 1.1),
-				cf = CFrame.new(xc, 14.1, side * 4.05),
+				cf = CFrame.new(xc - 1.7, 14.1, side * 4.05),
 				color = Color3.fromRGB(30, 30, 33), material = M.Metal,
 				cancollide = false, canquery = false, castshadow = false,
 			})
