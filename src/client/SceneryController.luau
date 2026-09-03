@@ -452,6 +452,10 @@ end
 local function buildChunk(i)
 	local model = Instance.new("Model")
 	model.Name = "Chunk_" .. i
+	-- pin the pivot to build-space origin BEFORE parts arrive: a fresh Model's
+	-- pivot is volatile (bbox center), and PivotTo would center the chunk on
+	-- the anchor instead of origin-mapping it — sinking and tearing the world
+	model.WorldPivot = CFrame.new()
 	local kind = chunkKind(i)
 	local rng = Random.new(seed * 17 + i * 131)
 	local builder = Builders[kind] or Builders.pine
@@ -465,6 +469,7 @@ end
 local function buildFarChunk(i)
 	local model = Instance.new("Model")
 	model.Name = "Far_" .. i
+	model.WorldPivot = CFrame.new()
 	local rng = Random.new(seed * 29 + i * 977)
 	for _, side in ipairs({ -1, 1 }) do
 		local count = rng:NextInteger(2, 3)
@@ -556,6 +561,7 @@ local function beamSweep(eta)
 		local camPos = cam.CFrame.Position
 		local arch = Instance.new("Model")
 		arch.Name = "BeamSweep"
+		arch.WorldPivot = CFrame.new()
 		for _, z in ipairs({ -7, 7 }) do
 			Forge.part({
 				parent = arch, name = "BeamPost",
@@ -603,6 +609,7 @@ end
 local function buildTerminus()
 	local model = Instance.new("Model")
 	model.Name = "TerminusArrival"
+	model.WorldPivot = CFrame.new()
 	-- anchored ahead of the camera so it slides up beside the cars as they slow
 	local cam = workspace.CurrentCamera
 	local camX = cam and cam.CFrame.Position.X or (Config.Train.Cars * Config.Train.CarPitch)

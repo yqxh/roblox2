@@ -70,13 +70,22 @@ local function slideDoor(b, open, seconds, silent)
 	end
 end
 
+local function markDoorFree(b)
+	b.state = "free"
+	if b.prompt then
+		b.prompt.ActionText = "Slide open"
+		b.prompt.ObjectText = "Door"
+		b.prompt.HoldDuration = Config.Interact.Door
+	end
+end
+
 function DoorSystem.forceOpen(i, bang)
 	local b = boundaries[i]
 	if not b or b.state == "sealed" then
 		return
 	end
 	if b.state ~= "free" then
-		b.state = "free"
+		markDoorFree(b) -- what the Furnace opens stays honest afterwards
 	end
 	slideDoor(b, true, bang and 0.15 or 0.5, bang)
 	if bang and b.door then

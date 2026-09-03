@@ -100,9 +100,20 @@ function State.start()
 		end
 	end)
 
+	-- Run state: the attribute is the durable truth (late joiners missed the
+	-- Net push); both paths funnel through one deduplicating setter.
+	local function setRunState(next)
+		if type(next) == "string" and next ~= State.runState then
+			State.runState = next
+			State.signals.runStateChanged:fire(next)
+		end
+	end
+	setRunState(workspace:GetAttribute("RunState") or "Lobby")
+	workspace:GetAttributeChangedSignal("RunState"):Connect(function()
+		setRunState(workspace:GetAttribute("RunState"))
+	end)
 	Net.on(Net.T.RunState, function(data)
-		State.runState = data.state
-		State.signals.runStateChanged:fire(data.state)
+		setRunState(data.state)
 	end)
 
 	Net.on(Net.T.CarEntered, function(data)

@@ -46,8 +46,9 @@ function TrainBuilder.interiorSpawn(i)
 end
 
 function TrainBuilder.carIndexAt(pos)
-	-- half-width plus a whisker: platform-standers are NOT aboard
-	if math.abs(pos.Z) > T.CarWidth / 2 + 1 then
+	-- strictly inside the shell: the platform edge starts at half-width + 0.5,
+	-- so anything looser counts edge-standers as aboard and arms the countdown
+	if math.abs(pos.Z) > T.CarWidth / 2 then
 		return nil
 	end
 	local i = math.floor(pos.X / T.CarPitch) + 1

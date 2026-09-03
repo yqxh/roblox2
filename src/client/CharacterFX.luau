@@ -46,11 +46,18 @@ local function applySpeed()
 		return
 	end
 	local target = desiredSpeed()
-	-- don't fight temporary server buffs (tonic) that push higher
-	if hum.WalkSpeed < target or hum.WalkSpeed <= P.SprintSpeed + 0.5 then
-		hum.WalkSpeed = target
+	local current = hum.WalkSpeed
+	-- raise freely; only LOWER from values this client set itself, so the
+	-- server's Tonic boost (base+4) isn't stomped one frame after it lands
+	if current < target
+		or current == P.SprintSpeed
+		or current == P.WalkSpeed
+		or current == P.CrouchSpeed then
+		if current ~= target then
+			hum.WalkSpeed = target
+		end
 	end
-	ClientState.sprinting = sprintHeld and target >= P.SprintSpeed - 0.5
+	ClientState.sprinting = sprintHeld and hum.WalkSpeed >= P.SprintSpeed - 0.5
 end
 
 ----------------------------------------------------------------

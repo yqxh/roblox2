@@ -256,6 +256,25 @@ function GameLoop.resume()
 	targetSpeed = Config.Train.CruiseSpeed
 	brake = nil
 	Net.fireAll(Net.T.Stinger, { name = "Whistle" })
+
+	-- catch-up: riders may have pushed past the NEXT station car during this
+	-- stop, and they will never "enter" it again — queue it now
+	task.delay(6, function()
+		if state ~= "Journey" or approachingStation then
+			return
+		end
+		local _, maxCar = ctx.EntityUtil.occupiedRange()
+		if not maxCar then
+			return
+		end
+		for k, stationCar in ipairs(Config.Run.StationCars) do
+			if maxCar >= stationCar and not stationsDone[k] then
+				stationsDone[k] = true
+				beginApproach(k)
+				break
+			end
+		end
+	end)
 end
 
 ----------------------------------------------------------------
@@ -362,12 +381,14 @@ function GameLoop.init(c)
 		if player:GetAttribute("Ghost") then
 			return
 		end
-		-- Station triggers
+		-- Station triggers: >= so a rider who crossed the station car while a
+		-- stop couldn't fire (mid-approach, mid-station) still queues the next
 		if state == "Journey" and not approachingStation then
 			for k, stationCar in ipairs(Config.Run.StationCars) do
-				if carIndex == stationCar and not stationsDone[k] then
+				if carIndex >= stationCar and not stationsDone[k] then
 					stationsDone[k] = true
 					beginApproach(k)
+					break
 				end
 			end
 		end

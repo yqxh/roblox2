@@ -513,12 +513,18 @@ local function wireHotbar()
 		end
 	end)
 
+	-- a tool is hooked once for life, however many times it re-parents
+	local hooked = setmetatable({}, { __mode = "k" })
+	local function hookTool(tool)
+		if tool:IsA("Tool") and not hooked[tool] then
+			hooked[tool] = true
+			tool.AttributeChanged:Connect(refreshHotbar)
+		end
+	end
 	local function watchContainer(container)
 		container.ChildAdded:Connect(function(child)
 			refreshHotbar()
-			if child:IsA("Tool") then
-				child.AttributeChanged:Connect(refreshHotbar)
-			end
+			hookTool(child)
 		end)
 		container.ChildRemoved:Connect(refreshHotbar)
 	end
@@ -527,9 +533,7 @@ local function wireHotbar()
 		local backpack = player:WaitForChild("Backpack")
 		watchContainer(backpack)
 		for _, tool in ipairs(backpack:GetChildren()) do
-			if tool:IsA("Tool") then
-				tool.AttributeChanged:Connect(refreshHotbar)
-			end
+			hookTool(tool)
 		end
 		refreshHotbar()
 	end
